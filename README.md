@@ -191,9 +191,9 @@ Chimera/
 
 ---
 
-> 相关文档：[Quark 量子学习手册](../Quark/docs/qk-quantum-learning-manual.md) ·
-> [TQNF 范式](../Quark/docs/qk-topological-quantum-learning.md) ·
-> [qk 语言手册](../Quark/docs/qk-language-manual.md)
+> 相关文档：[Quark 量子学习手册](../../../Quark/docs/qk-quantum-learning-manual.md) ·
+> [TQNF 范式](../../../Quark/docs/qk-topological-quantum-learning.md) ·
+> [qk 语言手册](../../../Quark/docs/qk-language-manual.md)
 
 ---
 
