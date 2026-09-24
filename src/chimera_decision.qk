@@ -1,0 +1,48 @@
+// chimera_decision.qk —— ④ 决策引擎（情绪策略 × 证据强度 → 决策）
+//
+// 决策 = 情绪策略调制的量子认知坍缩。
+//
+// 关键：情绪**不是枚举**，而是一个「可学习策略」EmotionPolicy——
+// 每个涌现情绪态（0..3）对应一个决策阈值，由反思（chimera_dream.qk 的
+// learn_emotion_policy）学习更新。「果断/犹豫/生气」是这些阈值学习结果的
+// 人类化解释，而非系统固有的标签。
+//
+// 注：本函数只接收经典值 + 值类型策略，不接收 QObject，避免线性类型 move。
+
+// 情绪策略（可学习）：每个涌现情绪态对决策的阈值调制
+form EmotionPolicy {
+    double threshold0;   // 情绪态 0 的决策阈值
+    double threshold1;   // 情绪态 1 的决策阈值
+    double threshold2;   // 情绪态 2 的决策阈值
+    double threshold3;   // 情绪态 3 的决策阈值
+}
+
+// 初始策略（无偏猜测：所有情绪态同等「犹豫」，反思后分化）
+@layer(time=0, thread=0, coord=(2))
+EmotionPolicy init_policy() {
+    EmotionPolicy p = new EmotionPolicy();
+    p.threshold0 = 0.5;
+    p.threshold1 = 0.5;
+    p.threshold2 = 0.5;
+    p.threshold3 = 0.5;
+    return p;
+}
+
+// 决策：情绪态 + 证据强度 → 决策（阈值从可学习策略读取）
+@layer(time=0, thread=0, coord=(3))
+int32 decide(EmotionPolicy policy, int32 emotion_state, double evidence) {
+    double threshold = 0.5;
+    route (emotion_state) {
+        path 0: { threshold = policy.threshold0; }
+        path 1: { threshold = policy.threshold1; }
+        path 2: { threshold = policy.threshold2; }
+        path 3: { threshold = policy.threshold3; }
+    }
+
+    // 决策坍缩：证据越过阈值 → 接受
+    int32 decision = 0;
+    if (evidence > threshold) {
+        decision = 1;
+    }
+    return decision;
+}

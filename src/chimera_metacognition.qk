@@ -1,0 +1,106 @@
+// chimera_metacognition.qk —— ⑥ 元认知核（认识错误 → 反思学习）
+//
+// 认识错误 → 反思学习」，从而真正「知道」自己是否犯错：
+//
+//   ① 认识错误 = 量子预测误差征象（quantum prediction-error syndrome）
+//      ε = 1 − |⟨预测|结果⟩|²   （SWAP test 保真度征象）
+//      借鉴 QEC 征象提取（Google Willow, Nature 2024；RL 控制 QEC, Nature 2026）
+//      与预测编码（Friston 自由能，Rao & Ballard）：纠错码与大脑都靠「预测−实际」
+//      的失配来检测错误，而不是靠外部标签。
+//
+//   ② 信心 = 量子尖锐度（quantum sharpness，量子 Fisher 信息启发）
+//      conf = |⟨Z⟩|：预测态越接近确定基态（±1）越「果断」，越叠加（0）越「犹豫」。
+//      量子 Fisher 信息为估计误差设下 Cramér-Rao 下界（npj QI 2023）——
+//      不确定性大（信心低）时，系统应当「停下来反思」（SRGen 测试时自反思）。
+//
+//   ③ 反思学习 = 征象振幅放大 + 错误调制深度更新
+//      用重复采样（量子 Zeno 式「盯着错误看」，arXiv:2506.12679；Nature Comm. 2026）
+//      确认并放大征象；错误越大、信心越低，反思越深、学习步长越大——
+//      Grover 振幅放大的元认知对偶：放大「我错了」的分量，使真正的错误
+//      获得不成比例的学习信号（Sherlock 自纠错推理 / SRGen 自反思生成）。
+//
+// 依赖 Quark：qattention（态重叠/保真度征象）、qexpect_z（非破坏期望）、
+//             basis_state（相位编码）、qmeasure（坍缩消费）
+//
+// 依赖组件：EmotionPolicy（chimera_decision.qk，由主程序 include 提供）
+
+// 错误读数：预测误差征象 + 信心 + 是否认识错误
+form ErrorReading {
+    double error;       // 预测误差征象 ε = 1 − |⟨预测|结果⟩|² ∈ [0,1]
+    double confidence;  // 信心 = |⟨Z⟩|（预测态尖锐度，±1 果断 / 0 犹豫）
+    int32 recognized;   // 1 = 认识错误（征象超阈值）
+}
+
+// 认识错误：量子预测误差征象（QEC 征象提取 + 预测编码）
+//   predicted：系统对结果的内部预测态 |预测⟩
+//   actual   ：实际反馈态 |结果⟩（外部地面真值）
+//   返回征象 ε 与信心，并在征象提取后坍缩消费两个态（QLT 线性类型恰好消费一次）
+@layer(time=0, thread=0, coord=(10))
+ErrorReading recognize_error(QObject predicted, QObject actual) {
+    double overlap = qattention(predicted, actual);   // SWAP test 保真度 |⟨预测|结果⟩|²
+    double z = qexpect_z(predicted, 0);               // 预测态尖锐度（信心）
+
+    // 征象提取完毕，坍缩消费两个态（线性类型：不消费 → E-Q002 泄漏）
+    int32 _p = qmeasure(predicted, 0);
+    int32 _a = qmeasure(actual, 0);
+
+    double error = 1.0 - overlap;                     // ε ∈ [0,1]
+    double confidence = z;
+    if (confidence < 0.0) {
+        confidence = -confidence;
+    }
+    int32 recognized = 0;
+    if (error > 0.5) {
+        recognized = 1;                               // 征象超阈值 → 认识错误
+    }
+
+    ErrorReading r = new ErrorReading();
+    r.error = error;
+    r.confidence = confidence;
+    r.recognized = recognized;
+    return r;
+}
+
+// 反思学习：征象振幅放大 + 错误调制深度更新（补充例行学习 learn_emotion_policy）
+//   在「认识错误」之后触发，比例行学习更深的纠正性更新：
+//     • 征象振幅放大：反思态 |reflect⟩ = basis_state(ε·π, 0, 0)（ε→0 为「对」，
+//       ε→1 为「错」），重复采样放大征象（量子 Zeno 式确认）。
+//     • 反思深度：信心低 → 想得更久 → 学习步长更大（SRGen 在不确定处停顿反思）。
+//     • 错误调制：认识错误时把「负征象」作为纠正性信号注入，放大坏决策的反向更新。
+@layer(time=0, thread=0, coord=(11))
+EmotionPolicy reflect_and_learn(EmotionPolicy policy, int32 emotion_state,
+                                 ErrorReading err, double reward) {
+    // ── 征象振幅放大（量子 Zeno 式重复采样确认错误）──
+    double amplification = 1.0;
+    int32 k = 0;
+    while (k < 3) {
+        auto reflect = basis_state(err.error * 3.14159, 0.0, 0);
+        double z = qexpect_z(reflect, 0);
+        int32 _ = qmeasure(reflect, 0);               // 消费反思态（QLT）
+        if (z < 0.0) {
+            z = -z;
+        }
+        amplification = amplification + (1.0 - z) * 0.5;   // 越接近「错」→ 放大越强
+        k = k + 1;
+    }
+
+    // ── 反思深度：信心低 → 想得更久 → 步长更大 ──
+    double lr = 0.05 * amplification;
+    if (err.recognized == 1) {
+        lr = lr * (1.0 + (1.0 - err.confidence));
+    }
+
+    // ── 错误调制更新：认识错误时注入纠正性反思信号 ──
+    double effective = reward;
+    if (err.recognized == 1) {
+        effective = reward - (err.error - 0.5) * amplification;
+    }
+
+    route (emotion_state) {
+        path 0: { policy.threshold0 = policy.threshold0 - lr * effective; }
+        path 1: { policy.threshold1 = policy.threshold1 - lr * effective; }
+        path 2: { policy.threshold2 = policy.threshold2 - lr * effective; }
+        path 3: { policy.threshold3 = policy.threshold3 - lr * effective; }
+    }
+    return policy;
+}

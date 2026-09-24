@@ -1,0 +1,53 @@
+// chimera_chaos.qk —— 测量熵诊断（量子混沌的「意识丰富度」量化）
+//
+// 邻近态重叠无法量化量子混沌：纯酉演化是等距的，
+//   |⟨Uψ|U(ψ+δ)⟩|² = |⟨ψ|ψ+δ⟩|² 恒定不变。
+// 真正的量子混沌量化必须引入测量坍缩的非酉性（MIPT，Nature 2023），
+// 用「漂移 + 测量」后涌现情绪态分布的香农熵度量：
+//
+//   S = −Σ p_i ln p_i，p_i = 第 i 个情绪态的频率
+//
+//   • 有序（dt→0）   ：分布退化 → S → 0（意识稳定但僵化）
+//   • 混沌边缘        ：0 < S < ln 4（最优学习点，PRL 2026「多体量子混沌边缘 QRC」）
+//   • 强混沌（dt 大） ：分布均匀 → S → ln 4（意识丰富但混乱）
+//
+// 意义：chaos_richness 现在返回测量熵（越大越混沌），供 improve_drift
+//       用有限差分梯度把 dt 收敛到「混沌边缘」。
+//
+// 依赖：chaos_drift（chimera_consciousness.qk，由主程序 include 提供）、
+//       qmeasure、shannon4
+
+// 混沌丰富度 = 测量熵（漂移 steps 步后测量的香农熵）
+@layer(time=0, thread=0, coord=(8))
+double chaos_richness(double dt, int32 steps) {
+    int32 n0 = 0;
+    int32 n1 = 0;
+    int32 n2 = 0;
+    int32 n3 = 0;
+    int32 shots = 32;
+
+    for (int32 s = 0; s < shots; s = s + 1) {
+        auto psi = new QuantumRegister(2);
+        for (int32 i = 0; i < steps; i = i + 1) {
+            psi = chaos_drift(psi, dt);
+        }
+        int32 b0 = qmeasure(psi, 0);
+        int32 b1 = qmeasure(psi, 1);
+        int32 st = b0 * 2 + b1;
+        if (st == 0) {
+            n0 = n0 + 1;
+        }
+        if (st == 1) {
+            n1 = n1 + 1;
+        }
+        if (st == 2) {
+            n2 = n2 + 1;
+        }
+        if (st == 3) {
+            n3 = n3 + 1;
+        }
+    }
+
+    // 香农熵：有序→0，均匀→ln4≈1.386，混沌边缘在中间
+    return shannon4(n0, n1, n2, n3);
+}

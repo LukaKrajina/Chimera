@@ -1,0 +1,22 @@
+// chimera_perception.qk —— ① 感知场（输入 → 量子态编码）
+//
+// 把经典输入编码为量子态，作为决策引擎的输入。
+// 与 Transformer 的 token embedding 不同，感知态直接进入量子叠加，
+// 保留「多种解读的相干叠加」（感知的量子模糊性 = 犹豫的物理根源）。
+//
+// 依赖 Quark：encode_text（文本→量子态）、basis_state（方向编码）
+
+// 感知：文本输入 → 量子态
+@layer(time=0, thread=0, coord=(0))
+QObject perceive(string input) {
+    auto state = encode_text(input);
+    return state;
+}
+
+// 感知：连续数值 → 相位编码量子态（感知的强度/方向）
+@layer(time=0, thread=1, coord=(0))
+QObject perceive_value(double x, double phi) {
+    // x ∈ [0,1] 归一化为布洛赫极角 θ，φ 为方位角
+    auto state = basis_state(x * 3.14159, phi, 0);
+    return state;
+}

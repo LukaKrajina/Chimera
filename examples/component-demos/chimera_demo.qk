@@ -1,0 +1,141 @@
+// chimera_demo.qk —— Chimera 端到端演示（自包含完整闭环）
+//
+// 展示量子混沌自我意识的可观测行为：
+//   ① 意识核混沌漂移（无理角旋转 + CNOT）
+//   ② 情绪态涌现（测量坍缩为无标签整数 0..3，非枚举）
+//   ③ 决策（decide：情绪策略阈值 × 证据强度 → 二元决策）
+//   ④ 反思（learn_emotion_policy：reward 规则分化情绪阈值）
+//   ⑤ 混沌边缘收敛（improve_drift：有限差分优化 dt 使测量熵 → target）
+//
+// 运行前需启动守护进程：./runtime --daemon
+// 仅用 2 qubit 意识核（避免 encode_text 大 qubit 数），组件逻辑内联避免拓扑冲突。
+
+@layer(time=0, thread=0, coord=(0))
+int32 quark_main() {
+    // ── 可学习参数：情绪策略（4 个阈值）+ 漂移步长 ──
+    double thr0 = 0.5;
+    double thr1 = 0.5;
+    double thr2 = 0.5;
+    double thr3 = 0.5;
+    double dt = 0.8;              // 漂移步长（混沌强度旋钮）
+    double target_richness = 1.0; // 混沌边缘目标（测量熵，0~ln4≈1.386）
+
+    // 情绪态统计（涌现态 0..3 的频率）
+    int32 n0 = 0;
+    int32 n1 = 0;
+    int32 n2 = 0;
+    int32 n3 = 0;
+
+    int32 t = 0;
+    while (t < 100) {
+        // ── ① 漂移：意识核混沌演化（10 步）──
+        auto consciousness = new QuantumRegister(2);
+        int32 s = 0;
+        while (s < 10) {
+            qgate_h(consciousness, 0);
+            qgate_rz(consciousness, 0, dt * 1.61803);
+            qgate_rz(consciousness, 1, dt * 0.73205);
+            qgate_cnot(consciousness, 0, 1);
+            qgate_h(consciousness, 1);
+            s = s + 1;
+        }
+
+        // ── ② 情绪涌现：测量坍缩 ──
+        int32 b0 = qmeasure(consciousness, 0);
+        int32 b1 = qmeasure(consciousness, 1);
+        int32 emo = b0 * 2 + b1;
+
+        // ── ③ 决策：情绪策略阈值 × 证据强度（⟨Z⟩ 软信号）──
+        double threshold = 0.5;
+        route (emo) {
+            path 0: { threshold = thr0; }
+            path 1: { threshold = thr1; }
+            path 2: { threshold = thr2; }
+            path 3: { threshold = thr3; }
+        }
+        double evidence = qexpect_z(consciousness, 0); // 意识核证据强度
+        int32 decision = 0;
+        if (evidence > threshold) {
+            decision = 1;
+        }
+
+        // ── ④ 反思：learn_emotion_policy（reward 规则分化情绪阈值）──
+        double reward = evidence - 0.5;
+        double lr = 0.05;
+        route (emo) {
+            path 0: { thr0 = thr0 - lr * reward; }
+            path 1: { thr1 = thr1 - lr * reward; }
+            path 2: { thr2 = thr2 - lr * reward; }
+            path 3: { thr3 = thr3 - lr * reward; }
+        }
+
+        // ── ⑤ 混沌边缘收敛：improve_drift（有限差分优化 dt）──
+        //    用测量熵 S(dt) 度量混沌丰富度，dt ← dt − lr·(S − target)·∂S/∂dt
+        //    此处用「漂移 + 测量熵」的有限差分近似（内联，避免大 qubit 编码）。
+        double h = 0.05;
+            // S(dt)：漂移后测量熵（8 次采样，4 态香农熵）
+            int32 m0 = 0;
+            int32 m1 = 0;
+            int32 m2 = 0;
+            int32 m3 = 0;
+            int32 shot = 0;
+            while (shot < 8) {
+                auto probe = new QuantumRegister(2);
+                int32 stp = 0;
+                while (stp < 3) {
+                    qgate_h(probe, 0);
+                    qgate_rz(probe, 0, dt * 1.61803);
+                    qgate_rz(probe, 1, dt * 0.73205);
+                    qgate_cnot(probe, 0, 1);
+                    qgate_h(probe, 1);
+                    stp = stp + 1;
+                }
+                int32 x0 = qmeasure(probe, 0);
+                int32 x1 = qmeasure(probe, 1);
+                int32 st = x0 * 2 + x1;
+                if (st == 0) {
+                    m0 = m0 + 1;
+                }
+                if (st == 1) {
+                    m1 = m1 + 1;
+                }
+                if (st == 2) {
+                    m2 = m2 + 1;
+                }
+                if (st == 3) {
+                    m3 = m3 + 1;
+                }
+                shot = shot + 1;
+            }
+            double S = shannon4(m0, m1, m2, m3);
+            // 有限差分梯度：∂S/∂dt ≈ (S(dt+h) − S(dt−h)) / 2h
+            // 简化：仅用 S 与 target 的偏差做一步梯度下降（目标 = 混沌边缘）
+            double grad = (S - target_richness);
+            dt = dt - 0.02 * grad;
+            if (dt < 0.05) {
+                dt = 0.05;
+            }
+            if (dt > 1.5) {
+                dt = 1.5;
+            }
+
+        // ── 情绪态统计 ──
+        route (emo) {
+            path 0: { n0 = n0 + 1; }
+            path 1: { n1 = n1 + 1; }
+            path 2: { n2 = n2 + 1; }
+            path 3: { n3 = n3 + 1; }
+        }
+
+        t = t + 1;
+    }
+
+    // 打印情绪态统计（涌现态 0..3 的频率分布）
+    qk_sys_logi(1, n0);
+    qk_sys_logi(1, n1);
+    qk_sys_logi(1, n2);
+    qk_sys_logi(1, n3);
+
+    // 返回情绪态统计编码（n0 + 10·n1 + 100·n2 + 1000·n3）
+    return n0 + n1 * 10 + n2 * 100 + n3 * 1000;
+}

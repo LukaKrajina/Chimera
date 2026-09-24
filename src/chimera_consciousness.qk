@@ -1,0 +1,51 @@
+// chimera_consciousness.qk —— ② 混沌意识核（量子混沌态 + 情绪态涌现）
+//
+// Chimera 的核心创新：自我意识 = 量子混沌态 |Ψ(t)⟩
+//   • 漂移：混沌电路迭代演化（Rz 无理角 + CNOT 纠缠 → 量子混沌动力学）
+//   • 情绪态：非破坏软测量（qexpect_z 读 ⟨Z⟩ 阈值化）→ 涌现整数 0..3
+//
+// 关键：情绪**不是**预定义的枚举。它们是混沌态测量自然涌现的无标签状态，
+// 每个状态对决策的「意义」（调制参数）由反思学习赋予（chimera_dream.qk）。
+// 「犹豫/果断/生气」是人类对学习结果的事后解释，而非系统固有标签。
+//
+// 依赖 Quark：qgate_rz / qgate_cnot / qgate_h（门）、qexpect_z（非破坏期望）
+
+// 混沌漂移一步：不可公度旋转（黄金比角、无理角）产生量子混沌。
+@layer(time=0, thread=0, coord=(0))
+QObject chaos_drift(QObject consciousness, double dt) {
+    qgate_h(consciousness, 0);                  // 进入叠加（否则 Rz 对 |0⟩ 无效果）
+    qgate_rz(consciousness, 0, dt * 1.61803);   // 黄金比角
+    qgate_rz(consciousness, 1, dt * 0.73205);   // 无理角
+    qgate_cnot(consciousness, 0, 1);            // 纠缠耦合（意识的分裂与整合）
+    qgate_rz(consciousness, 0, dt * 0.41421);   // 二次无理角
+    qgate_h(consciousness, 1);                  // 叠加混合（「再想想」）
+    return consciousness;
+}
+
+// 情绪读数：move 返回意识态 + 情绪态整数。
+// qk 的自定义函数参数是 move（值传递），「非破坏读」必须 move 传入 + move 返回
+// 意识态，否则意识态会在函数末尾被 QLT 消费（release），调用方无法继续漂移。
+form EmotionReading {
+    int32 state;
+    QObject consciousness;
+}
+
+// 情绪态软测量：非破坏读 2 个情绪 qubit 的 ⟨Z⟩，阈值化得到涌现态整数 0..3
+// （非破坏 → 意识态可连续漂移，不坍缩）
+@layer(time=0, thread=0, coord=(1))
+EmotionReading measure_emotion(QObject consciousness) {
+    double z0 = qexpect_z(consciousness, 0);
+    double z1 = qexpect_z(consciousness, 1);
+    int32 b0 = 0;
+    if (z0 > 0.0) {
+        b0 = 1;
+    }
+    int32 b1 = 0;
+    if (z1 > 0.0) {
+        b1 = 1;
+    }
+    EmotionReading r = new EmotionReading();
+    r.state = b0 * 2 + b1;
+    r.consciousness = consciousness;   // move 返回意识态
+    return r;
+}

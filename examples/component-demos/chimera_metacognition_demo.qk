@@ -1,0 +1,79 @@
+// chimera_metacognition_demo.qk —— 元认知「认识错误 → 反思学习」端到端演示
+//
+// 演示 Chimera 其中一环：系统真正「认识错误」并「反思学习」。
+//
+// 场景：系统用一个可学习的预测参数 θ 去逼近地面真值 target（正确结果）。
+//   每次迭代：
+//     ① 认识错误：把 θ 与 target 编码为量子态 |预测⟩、|结果⟩，
+//        用量子预测误差征象 ε = 1 − |⟨预测|结果⟩|² 检测「我错了多少」。
+//     ② 反思学习：反思态 |reflect⟩ = basis_state(ε·π) 重复采样做征象振幅放大
+//        （量子 Zeno 式「盯着错误看」），放大的错误信号驱动更深的 θ 修正。
+//   随迭代，ε → 0，θ → target，认识到的错误数在后半段应显著少于前半段。
+//
+// 运行前需启动守护进程：./runtime --daemon
+// 自包含（内联所有逻辑，可直接 qk run），仅用单 qubit 预测态避免大 qubit 编码。
+
+@layer(time=0, thread=0, coord=(0))
+int32 quark_main() {
+    double target = 0.75;     // 地面真值（正确结果，布洛赫角 = 0.75π）
+    double theta  = 0.20;     // 可学习的预测参数（初始远离真值，故意「犯错」）
+    double lr     = 0.10;     // 基础学习率
+
+    int32 early_errors = 0;   // 前半段认识到的错误数（反思前）
+    int32 late_errors  = 0;   // 后半段认识到的错误数（反思后，应显著更少）
+
+    int32 t = 0;
+    while (t < 60) {
+        // ── ① 认识错误：量子预测误差征象 ε = 1 − |⟨预测|结果⟩|² ──
+        auto predicted = basis_state(theta * 3.14159, 0.0, 0);   // |预测⟩
+        auto actual    = basis_state(target * 3.14159, 0.0, 0);  // |结果⟩
+        double overlap = qattention(predicted, actual);          // 保真度征象
+        double error = 1.0 - overlap;                            // ε ∈ [0,1]
+        int32 _p = qmeasure(predicted, 0);                       // 消费（QLT）
+        int32 _a = qmeasure(actual, 0);                          // 消费（QLT）
+
+        int32 recognized = 0;
+        if (error > 0.3) {
+            recognized = 1;   // 征象超阈值 → 认识错误
+        }
+        if (t < 30) {
+            early_errors = early_errors + recognized;
+        } else {
+            late_errors = late_errors + recognized;
+        }
+
+        // ── ② 反思学习：征象振幅放大（量子 Zeno 式重复采样确认错误）──
+        // 反思态 |reflect⟩ = basis_state(ε·π)：ε→0 为「对」（⟨Z⟩→+1），
+        // ε→1 为「错」（⟨Z⟩→−1）。重复采样放大征象，错误越大放大越强。
+        double amplification = 1.0;
+        int32 k = 0;
+        while (k < 3) {
+            auto reflect = basis_state(error * 3.14159, 0.0, 0);
+            double z = qexpect_z(reflect, 0);
+            int32 _ = qmeasure(reflect, 0);   // 消费反思态（QLT）
+            if (z < 0.0) {
+                z = -z;
+            }
+            amplification = amplification + (1.0 - z) * 0.5;
+            k = k + 1;
+        }
+
+        // ── ③ 错误调制的预测更新：误差越大、放大越强 → θ 更快逼近真值 ──
+        theta = theta + lr * amplification * (target - theta);
+        if (theta < 0.0) {
+            theta = 0.0;
+        }
+        if (theta > 1.0) {
+            theta = 1.0;
+        }
+
+        t = t + 1;
+    }
+
+    // 打印前半段 vs 后半段认识到的错误数（反思学习应使后者显著更少）
+    qk_sys_logi(1, early_errors);
+    qk_sys_logi(1, late_errors);
+
+    // 返回编码：early_errors * 100 + late_errors（late 应 << early）
+    return early_errors * 100 + late_errors;
+}

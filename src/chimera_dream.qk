@@ -1,0 +1,141 @@
+// chimera_dream.qk —— ③ 演化世界 + ⑤ 几何优化器（做梦 + 递归自我改进）
+//
+// Dream-RSI 的量子化：系统在演化世界「做梦」，回放记忆、生成反事实，
+// 据此改进探索策略（漂移步长 dt）与情绪策略（各情绪态的阈值）。
+//
+//   • dream_state：准备 dt 漂移后的记忆态（演化世界）
+//   • quality_of：读决策质量 ⟨Z⟩
+//   • improve_drift：双轨梯度改进 dt（有限差分 + 完整 QGT 自然梯度）
+//   • learn_emotion_policy：反思学习情绪策略（情绪从无偏猜测中分化涌现）
+//
+// 依赖 Quark：qexpect_z（非破坏期望）、qattention（态重叠）、encode_text
+
+// 做梦：准备 dt 漂移后的记忆态（演化世界的一次「梦境」）
+// 记忆态用振幅编码压到 2 qubit（自适应感知分配：naive 48 qubit 超限时自动
+// 走振幅编码；这里显式 2 qubit，与意识核同维度，便于重叠/漂移）。
+@layer(time=0, thread=0, coord=(4))
+QObject dream_state(double dt) {
+    auto world = encode_amplitudes("memory", 2);
+    world = chaos_drift(world, dt);
+    return world;
+}
+
+// 决策质量 = ⟨Z⟩（越高越「果断清晰」）
+@layer(time=0, thread=0, coord=(5))
+double quality_of(QObject state) {
+    return qexpect_z(state, 0);
+}
+
+// 几何优化漂移步长 dt：双轨梯度
+//   mode=0：有限差分（通用，QVM/QM 均适用）
+//   mode=1：完整 QGT 自然梯度（Fubini-Study 度量，用态重叠组装）
+@layer(time=0, thread=0, coord=(6))
+double improve_drift(double dt, double target, int32 mode) {
+    double h = 0.01;
+
+    // 欧氏梯度（有限差分，两轨共用）
+    double f_center = quality_of(dream_state(dt));
+    double f_plus   = quality_of(dream_state(dt + h));
+    double f_minus  = quality_of(dream_state(dt - h));
+    double grad = (f_plus - f_minus) / (2.0 * h);
+    double dl = 2.0 * (f_center - target) * grad;
+
+    if (mode == 0) {
+        // 有限差分：直接欧氏梯度步
+        return dt - 0.1 * dl;
+    } else {
+        // 完整 QGT 自然梯度：
+        //   Fubini-Study 度量 G ≈ (1 − |⟨Ψ(dt)|Ψ(dt+h)⟩|²)/h²
+        auto s0 = dream_state(dt);
+        auto s1 = dream_state(dt + h);
+        double overlap = qattention(s0, s1);   // |⟨Ψ(dt)|Ψ(dt+h)⟩|²
+        double G = (1.0 - overlap) / (h * h);
+        if (G < 0.000001) {
+            G = 0.000001;   // 正则化：重叠≈1 时度量趋零
+        }
+        // 消费 QLT 线性类型（每个 QObject 恰好消费一次）
+        int32 _s0 = qmeasure(s0, 0);
+        int32 _t0 = qmeasure(s1, 0);
+        // 自然梯度步 = G⁻¹ · ∂L/∂dt（几何感知，规避坐标奇异性）
+        return dt - 0.1 * (dl / G);
+    }
+}
+
+// 反思学习情绪策略：双轨
+//   mode=0：reward 规则（启发式，简单，无感知态依赖，真实 QM 友好）
+//     reward > 0（决策好）→ 阈值减小（更果断）
+//     reward < 0（决策坏）→ 阈值增大（更犹豫）
+//   mode=1：完整 QGT 自然梯度（判定态参数化，几何感知，QVM 更优）
+//     判定态 |d(θ)⟩ = basis_state(θ·π)，决策质量 f(θ) = |⟨d(θ)|perception⟩|²
+//     自然梯度上升 θ += lr·G⁻¹·∇f，G = (1−|⟨d(θ)|d(θ+h)⟩|²)/h²
+// 情绪态从无偏 0.5 分化，学习出各自的「果断度」——情绪是学习产生的
+@layer(time=0, thread=0, coord=(7))
+EmotionPolicy learn_emotion_policy(EmotionPolicy policy, int32 emotion_state,
+                                   double reward, QObject perception, int32 mode) {
+    if (mode == 0) {
+        // ── reward 规则（启发式）──
+        double lr = 0.05;
+        route (emotion_state) {
+            path 0: { policy.threshold0 = policy.threshold0 - lr * reward; }
+            path 1: { policy.threshold1 = policy.threshold1 - lr * reward; }
+            path 2: { policy.threshold2 = policy.threshold2 - lr * reward; }
+            path 3: { policy.threshold3 = policy.threshold3 - lr * reward; }
+        }
+        return policy;
+    } else {
+        // ── 完整 QGT 自然梯度（几何感知）──
+        double h = 0.01;
+        // 读取当前情绪态阈值 θ ∈ [0,1]
+        double theta = 0.5;
+        route (emotion_state) {
+            path 0: { theta = policy.threshold0; }
+            path 1: { theta = policy.threshold1; }
+            path 2: { theta = policy.threshold2; }
+            path 3: { theta = policy.threshold3; }
+        }
+
+        // 决策质量 f(θ) = |⟨d(θ)|perception⟩|²（判定态与感知态的重叠）
+        // 判定态具名化，以便 QLT 末尾消费（单 qubit）
+        auto d_center = basis_state(theta * 3.14159, 0.0, 0);
+        auto d_plus   = basis_state((theta + h) * 3.14159, 0.0, 0);
+        auto d_minus  = basis_state((theta - h) * 3.14159, 0.0, 0);
+        double f_center = qattention(d_center, perception);
+        double f_plus   = qattention(d_plus, perception);
+        double f_minus  = qattention(d_minus, perception);
+        double grad = (f_plus - f_minus) / (2.0 * h);
+
+        // QGT 度量：G = (1 − |⟨d(θ)|d(θ+h)⟩|²)/h²
+        auto d0 = basis_state(theta * 3.14159, 0.0, 0);
+        auto d1 = basis_state((theta + h) * 3.14159, 0.0, 0);
+        double overlap = qattention(d0, d1);
+        double G = (1.0 - overlap) / (h * h);
+        if (G < 0.000001) {
+            G = 0.000001;   // 正则化
+        }
+
+        // 自然梯度上升：θ += lr · G⁻¹ · ∇f（最大化决策质量）
+        double new_theta = theta + 0.05 * (grad / G);
+        if (new_theta < 0.0) {
+            new_theta = 0.0;
+        }
+        if (new_theta > 1.0) {
+            new_theta = 1.0;
+        }
+
+        route (emotion_state) {
+            path 0: { policy.threshold0 = new_theta; }
+            path 1: { policy.threshold1 = new_theta; }
+            path 2: { policy.threshold2 = new_theta; }
+            path 3: { policy.threshold3 = new_theta; }
+        }
+
+        // 消费 QLT 线性类型（判定态均为单 qubit）
+        int32 _dc = qmeasure(d_center, 0);
+        int32 _dp = qmeasure(d_plus, 0);
+        int32 _dm = qmeasure(d_minus, 0);
+        int32 _d0 = qmeasure(d0, 0);
+        int32 _d1 = qmeasure(d1, 0);
+
+        return policy;
+    }
+}

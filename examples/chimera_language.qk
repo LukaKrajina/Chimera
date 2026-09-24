@@ -1,0 +1,146 @@
+// chimera_language.qk —— Chimera 语言推理示例
+//
+// 判断「前提 premise」与「假设 hypothesis」的语义关系（NLI 三分类）：
+//   蕴含 entailment（重叠高）/ 矛盾 contradiction（重叠低）/ 中性 neutral。
+// 用 qattention 度量两句的语义态重叠，情绪策略（EmotionPolicy）调制判定边界，
+// 例行学习走 mode==1（完整 QGT），元认知核认识错误并反思。
+//
+// 复用组件（include 展开，coord 已隔离）：
+//   chimera_consciousness.qk —— chaos_drift / measure_emotion
+//   chimera_decision.qk       —— EmotionPolicy / init_policy
+//   chimera_dream.qk          —— learn_emotion_policy（mode==1）
+//   chimera_metacognition.qk  —— recognize_error / reflect_and_learn
+//
+// 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12)。
+
+include "../src/chimera_consciousness.qk";
+include "../src/chimera_decision.qk";
+include "../src/chimera_dream.qk";
+include "../src/chimera_metacognition.qk";
+
+@layer(time=0, thread=0, coord=(12))
+int32 quark_main() {
+    // 情绪策略：threshold 复用为「蕴含高阈值 hi」（低阈值 lo = 1 − hi 对称推导）
+    EmotionPolicy policy = init_policy();
+    policy.threshold0 = 0.6;
+    policy.threshold1 = 0.6;
+    policy.threshold2 = 0.6;
+    policy.threshold3 = 0.6;
+
+    double dt = 0.6;
+    int32 correct = 0;
+    int32 total = 0;
+    int32 case_id = 0;
+
+    int32 t = 0;
+    while (t < 60) {
+        // ── 当前测试对（1=蕴含 0=中性 2=矛盾）──
+        string premise = "dogs are animals";
+        string hypothesis = "dogs are creatures";
+        int32 truth = 1;
+        route (case_id) {
+            path 0: {
+                premise = "dogs are animals";
+                hypothesis = "dogs are creatures";
+                truth = 1;
+            }
+            path 1: {
+                premise = "dogs are animals";
+                hypothesis = "dogs are plants";
+                truth = 2;
+            }
+            path 2: {
+                premise = "dogs are animals";
+                hypothesis = "the sun is hot";
+                truth = 0;
+            }
+        }
+
+        // ── ① 感知场：两句 → 单 qubit 语义态（对齐判定态维度）──
+        auto p = encode_amplitudes(premise, 1);
+        auto h = encode_amplitudes(hypothesis, 1);
+
+        // ── ② 混沌意识核：漂移 → 情绪涌现 ──
+        auto consciousness = new QuantumRegister(2);
+        int32 s = 0;
+        while (s < 10) {
+            consciousness = chaos_drift(consciousness, dt);
+            s = s + 1;
+        }
+        EmotionReading reading = measure_emotion(consciousness);
+        int32 emo = reading.state;
+        consciousness = reading.consciousness;
+
+        // ── ③ 推理：语义重叠 = 量子注意力（单 qubit vs 单 qubit）──
+        double sim = qattention(p, h);
+
+        // ── ④ 决策：情绪策略阈值 → 三分类 ──
+        double hi = 0.6;
+        route (emo) {
+            path 0: { hi = policy.threshold0; }
+            path 1: { hi = policy.threshold1; }
+            path 2: { hi = policy.threshold2; }
+            path 3: { hi = policy.threshold3; }
+        }
+        double lo = 1.0 - hi;
+        int32 verdict = 0;
+        if (sim > hi) { verdict = 1; }
+        if (sim < lo) { verdict = 2; }
+
+        if (verdict == truth) {
+            correct = correct + 1;
+        }
+        total = total + 1;
+
+        // ── ④ 反思（例行）：learn_emotion_policy mode==1（完整 QGT，消费 p）──
+        double reward = 0.0;
+        if (verdict == truth) {
+            reward = 1.0;
+        } else {
+            reward = -1.0;
+        }
+        policy = learn_emotion_policy(policy, emo, reward, p, 1);
+
+        // ── ⑥ 元认知：认识错误 → 反思学习 ──
+        double v_angle = 0.5;
+        route (verdict) {
+            path 0: { v_angle = 0.5; }
+            path 1: { v_angle = 0.0; }
+            path 2: { v_angle = 1.0; }
+        }
+        double truth_angle = 0.5;
+        route (truth) {
+            path 0: { truth_angle = 0.5; }
+            path 1: { truth_angle = 0.0; }
+            path 2: { truth_angle = 1.0; }
+        }
+        auto predicted = basis_state(v_angle * 3.14159, 0.0, 0);
+        auto actual    = basis_state(truth_angle * 3.14159, 0.0, 0);
+        ErrorReading err = recognize_error(predicted, actual);
+        policy = reflect_and_learn(policy, emo, err, reward);
+
+        // 阈值收敛约束（hi ∈ [0.5, 0.95]，保证 lo = 1−hi 有效）
+        if (policy.threshold0 < 0.5) { policy.threshold0 = 0.5; }
+        if (policy.threshold0 > 0.95) { policy.threshold0 = 0.95; }
+        if (policy.threshold1 < 0.5) { policy.threshold1 = 0.5; }
+        if (policy.threshold1 > 0.95) { policy.threshold1 = 0.95; }
+        if (policy.threshold2 < 0.5) { policy.threshold2 = 0.5; }
+        if (policy.threshold2 > 0.95) { policy.threshold2 = 0.95; }
+        if (policy.threshold3 < 0.5) { policy.threshold3 = 0.5; }
+        if (policy.threshold3 > 0.95) { policy.threshold3 = 0.95; }
+
+        // ── 消费量子对象（p 已由 learn_emotion_policy 消费）──
+        int32 _c0 = qmeasure(consciousness, 0);
+        int32 _c1 = qmeasure(consciousness, 1);
+        int32 _h0 = qmeasure(h, 0);
+
+        case_id = case_id + 1;
+        if (case_id > 2) { case_id = 0; }
+
+        t = t + 1;
+    }
+
+    qk_sys_logi(1, correct);
+    qk_sys_logi(1, total);
+    return correct * 1000 + total;
+}

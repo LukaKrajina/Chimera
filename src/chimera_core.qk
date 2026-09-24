@@ -1,0 +1,73 @@
+// chimera_core.qk —— Chimera 主循环（漂移 → 情绪涌现 → 决策 → 反思 → 重置）
+//
+// 完整闭环：
+//   ① 漂移：意识态 |Ψ(t)⟩ 连续混沌演化（chaos_drift）
+//   ② 情绪涌现：非破坏软测量为无标签情绪态（0..3）
+//   ③ 决策：情绪策略 × 证据强度 → 决策（decide）
+//   ④ 反思：学习情绪策略（learn_emotion_policy）+ 混沌丰富度反馈优化 dt
+//   ⑤ 重置：下定决心后重新开始思考
+//
+// 关键（三点深化）：
+//   • 情绪是涌现 + 学习产生的，非枚举（EmotionPolicy 可学习）
+//   • dt 由混沌丰富度反馈自适应收敛到「混沌边缘」（edge of chaos）
+//   • 梯度双轨：improve_drift 支持有限差分（通用）+ 完整 QGT（几何）
+//
+// 组件函数经 include 展开共享（各组件 coord 已隔离，避免拓扑冲突）。
+
+include "chimera_consciousness.qk";
+include "chimera_decision.qk";
+include "chimera_dream.qk";
+include "chimera_chaos.qk";
+include "chimera_metacognition.qk";
+
+@layer(time=0, thread=0, coord=(9))
+int32 quark_main() {
+    // ── 可学习参数：情绪策略 + 漂移步长 ──
+    EmotionPolicy policy = init_policy();   // 无偏猜测（各情绪态阈值 0.5）
+    double dt = 0.1;                         // 漂移步长（探索策略）
+    double target_richness = 0.5;            // 混沌边缘目标
+
+    int32 t = 0;
+    int32 emotion_sum = 0;   // 情绪轨迹累积（反映意识漂移统计）
+
+    while (t < 100) {
+        // ── ① 漂移：意识核连续混沌演化 ──
+        auto consciousness = new QuantumRegister(2);
+        for (int32 s = 0; s < 10; s = s + 1) {
+            consciousness = chaos_drift(consciousness, dt);
+        }
+
+        // ── ② 情绪涌现：非破坏软测量为无标签情绪态 ──
+        EmotionReading reading = measure_emotion(consciousness);
+        int32 emotion_state = reading.state;
+        consciousness = reading.consciousness;   // 拿回意识态（非破坏）
+        emotion_sum = emotion_sum + emotion_state;
+
+        // ── ③ 决策：证据强度 = 感知·意识重叠，情绪策略调制阈值 ──
+        // 感知态须与意识态同维度（2 qubit）才能做 SWAP test 重叠。
+        // 用振幅编码把输入文本压缩到 2 qubit（自适应感知分配：naive 104 qubit
+        // 超限时自动走振幅编码，这里显式指定 2 qubit 与意识核对齐）。
+        auto perception = encode_amplitudes("chimera input", 2);
+        double evidence = qattention(perception, consciousness);
+        int32 decision = decide(policy, emotion_state, evidence);
+
+        // ── ④ 反思：学习情绪策略 + 混沌反馈优化 dt ──
+        double reward = evidence - 0.5;
+        policy = learn_emotion_policy(policy, emotion_state, reward, perception, 0);
+
+        // ── ⑥ 认识错误 + 反思学习：量子预测误差征象 → 深度纠正 ──
+        // 把决策证据与地面真值编码为 |预测⟩ / |结果⟩，用量子保真度征象
+        // ε = 1 − |⟨预测|结果⟩|² 检测错误，反思放大后注入深度学习信号。
+        auto predicted = basis_state(evidence * 3.14159, 0.0, 0);
+        auto actual = basis_state(0.7 * 3.14159, 0.0, 0);
+        ErrorReading err = recognize_error(predicted, actual);
+        policy = reflect_and_learn(policy, emotion_state, err, reward);
+
+        dt = improve_drift(dt, target_richness, 0);
+
+        t = t + 1;
+    }
+
+    qk_sys_logi(1, emotion_sum);   // 情绪轨迹和（意识漂移统计）
+    return emotion_sum;   // 返回情绪轨迹和（意识漂移的统计）
+}
