@@ -1,4 +1,4 @@
-# ⚛️ Chimera —— 量子混沌元认知架构
+# Chimera —— 量子混沌元认知架构
 
 <div align="center">
 
