@@ -25,8 +25,8 @@ int32 quark_main() {
     int32 t = 0;
     while (t < 60) {
         // ── ① 认识错误：量子预测误差征象 ε = 1 − |⟨预测|结果⟩|² ──
-        auto predicted = basis_state(theta * 3.14159, 0.0, 0);   // |预测⟩
-        auto actual    = basis_state(target * 3.14159, 0.0, 0);  // |结果⟩
+        auto predicted = basis_state(theta * 3.14159265358979, 0.0, 0);   // |预测⟩
+        auto actual    = basis_state(target * 3.14159265358979, 0.0, 0);  // |结果⟩
         double overlap = qattention(predicted, actual);          // 保真度征象
         double error = 1.0 - overlap;                            // ε ∈ [0,1]
         int32 _p = qmeasure(predicted, 0);                       // 消费（QLT）
@@ -48,7 +48,7 @@ int32 quark_main() {
         double amplification = 1.0;
         int32 k = 0;
         while (k < 3) {
-            auto reflect = basis_state(error * 3.14159, 0.0, 0);
+            auto reflect = basis_state(error * 3.14159265358979, 0.0, 0);
             double z = qexpect_z(reflect, 0);
             int32 _ = qmeasure(reflect, 0);   // 消费反思态（QLT）
             if (z < 0.0) {

@@ -17,6 +17,6 @@ QObject perceive(string input) {
 @layer(time=0, thread=1, coord=(0))
 QObject perceive_value(double x, double phi) {
     // x ∈ [0,1] 归一化为布洛赫极角 θ，φ 为方位角
-    auto state = basis_state(x * 3.14159, phi, 0);
+    auto state = basis_state(x * 3.14159265358979, phi, 0);
     return state;
 }

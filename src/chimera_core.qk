@@ -58,8 +58,8 @@ int32 quark_main() {
         // ── ⑥ 认识错误 + 反思学习：量子预测误差征象 → 深度纠正 ──
         // 把决策证据与地面真值编码为 |预测⟩ / |结果⟩，用量子保真度征象
         // ε = 1 − |⟨预测|结果⟩|² 检测错误，反思放大后注入深度学习信号。
-        auto predicted = basis_state(evidence * 3.14159, 0.0, 0);
-        auto actual = basis_state(0.7 * 3.14159, 0.0, 0);
+        auto predicted = basis_state(evidence * 3.14159265358979, 0.0, 0);
+        auto actual = basis_state(0.7 * 3.14159265358979, 0.0, 0);
         ErrorReading err = recognize_error(predicted, actual);
         policy = reflect_and_learn(policy, emotion_state, err, reward);
 

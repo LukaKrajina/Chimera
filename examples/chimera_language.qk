@@ -1,16 +1,16 @@
-// chimera_language.qk —— Chimera 语言推理示例
+// chimera_language.qk —— Chimera 语言推理示例（量子指纹匹配）
 //
 // 判断「前提 premise」与「假设 hypothesis」的语义关系（NLI 三分类）：
 //   蕴含 entailment（重叠高）/ 矛盾 contradiction（重叠低）/ 中性 neutral。
-// 用 qattention 度量两句的语义态重叠，情绪策略（EmotionPolicy）调制判定边界，
-// 例行学习走 mode==1（完整 QGT），元认知核认识错误并反思。
+// 用 encode_amplitudes 做 3-qubit 字符 n-gram 量子指纹，qattention 度量两句话的
+// 指纹态重叠；情绪策略（EmotionPolicy）调制判定边界；例行学习走 mode==0（reward
+// 规则，避免多 qubit 感知态与单 qubit 判定态的维度不匹配）；元认知核认识错误并反思。
 //
-// 复用组件（include 展开，coord 已隔离）：
-//   chimera_consciousness.qk —— chaos_drift / measure_emotion
-//   chimera_decision.qk       —— EmotionPolicy / init_policy
-//   chimera_dream.qk          —— learn_emotion_policy（mode==1）
-//   chimera_metacognition.qk  —— recognize_error / reflect_and_learn
+// 样本集：9 对 NLI 句对（3 蕴含 + 3 矛盾 + 3 中性），替代原先 3 对硬编码句对。
+// 注意：这是「字符 n-gram 量子指纹」匹配（量子最近邻），不是深度语义理解；
+//       真正语义推理需接入 QLM（qlm_invoke）词嵌入，见扩展方向。
 //
+// 复用组件（include 展开，coord 已隔离）。
 // 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12)。
 
 include "../src/chimera_consciousness.qk";
@@ -20,7 +20,6 @@ include "../src/chimera_metacognition.qk";
 
 @layer(time=0, thread=0, coord=(12))
 int32 quark_main() {
-    // 情绪策略：threshold 复用为「蕴含高阈值 hi」（低阈值 lo = 1 − hi 对称推导）
     EmotionPolicy policy = init_policy();
     policy.threshold0 = 0.6;
     policy.threshold1 = 0.6;
@@ -33,34 +32,28 @@ int32 quark_main() {
     int32 case_id = 0;
 
     int32 t = 0;
-    while (t < 60) {
-        // ── 当前测试对（1=蕴含 0=中性 2=矛盾）──
+    while (t < 90) {
+        // ── 当前测试句对（1=蕴含 0=中性 2=矛盾）──
         string premise = "dogs are animals";
         string hypothesis = "dogs are creatures";
         int32 truth = 1;
         route (case_id) {
-            path 0: {
-                premise = "dogs are animals";
-                hypothesis = "dogs are creatures";
-                truth = 1;
-            }
-            path 1: {
-                premise = "dogs are animals";
-                hypothesis = "dogs are plants";
-                truth = 2;
-            }
-            path 2: {
-                premise = "dogs are animals";
-                hypothesis = "the sun is hot";
-                truth = 0;
-            }
+            path 0: { premise = "dogs are animals";   hypothesis = "dogs are creatures"; truth = 1; }
+            path 1: { premise = "dogs are animals";   hypothesis = "dogs are plants";    truth = 2; }
+            path 2: { premise = "dogs are animals";   hypothesis = "the sun is hot";     truth = 0; }
+            path 3: { premise = "cats are mammals";   hypothesis = "cats are animals";   truth = 1; }
+            path 4: { premise = "cats are mammals";   hypothesis = "cats are reptiles";  truth = 2; }
+            path 5: { premise = "water is wet";       hypothesis = "ice is cold";        truth = 0; }
+            path 6: { premise = "birds can fly";      hypothesis = "birds have wings";   truth = 1; }
+            path 7: { premise = "birds can fly";      hypothesis = "birds cannot move";  truth = 2; }
+            path 8: { premise = "the sky is blue";    hypothesis = "grass is green";     truth = 0; }
         }
 
-        // ── ① 感知场：两句 → 单 qubit 语义态（对齐判定态维度）──
-        auto p = encode_amplitudes(premise, 1);
-        auto h = encode_amplitudes(hypothesis, 1);
+        // ── ① 感知场：两句 → 3-qubit 字符 n-gram 量子指纹 ──
+        auto p = encode_amplitudes(premise, 3);
+        auto h = encode_amplitudes(hypothesis, 3);
 
-        // ── ② 混沌意识核：漂移 → 情绪涌现 ──
+        // ── ② 混沌意识核：kicked-top 漂移 → 情绪涌现 ──
         auto consciousness = new QuantumRegister(2);
         int32 s = 0;
         while (s < 10) {
@@ -71,7 +64,7 @@ int32 quark_main() {
         int32 emo = reading.state;
         consciousness = reading.consciousness;
 
-        // ── ③ 推理：语义重叠 = 量子注意力（单 qubit vs 单 qubit）──
+        // ── ③ 推理：语义重叠 = 量子注意力（3 qubit vs 3 qubit）──
         double sim = qattention(p, h);
 
         // ── ④ 决策：情绪策略阈值 → 三分类 ──
@@ -92,14 +85,14 @@ int32 quark_main() {
         }
         total = total + 1;
 
-        // ── ④ 反思（例行）：learn_emotion_policy mode==1（完整 QGT，消费 p）──
+        // ── ④ 反思（例行）：mode==0 reward 规则 ──
         double reward = 0.0;
         if (verdict == truth) {
             reward = 1.0;
         } else {
             reward = -1.0;
         }
-        policy = learn_emotion_policy(policy, emo, reward, p, 1);
+        policy = learn_emotion_policy(policy, emo, reward, p, 0);
 
         // ── ⑥ 元认知：认识错误 → 反思学习 ──
         double v_angle = 0.5;
@@ -114,8 +107,8 @@ int32 quark_main() {
             path 1: { truth_angle = 0.0; }
             path 2: { truth_angle = 1.0; }
         }
-        auto predicted = basis_state(v_angle * 3.14159, 0.0, 0);
-        auto actual    = basis_state(truth_angle * 3.14159, 0.0, 0);
+        auto predicted = basis_state(v_angle * 3.14159265358979, 0.0, 0);
+        auto actual    = basis_state(truth_angle * 3.14159265358979, 0.0, 0);
         ErrorReading err = recognize_error(predicted, actual);
         policy = reflect_and_learn(policy, emo, err, reward);
 
@@ -129,13 +122,13 @@ int32 quark_main() {
         if (policy.threshold3 < 0.5) { policy.threshold3 = 0.5; }
         if (policy.threshold3 > 0.95) { policy.threshold3 = 0.95; }
 
-        // ── 消费量子对象（p 已由 learn_emotion_policy 消费）──
+        // ── 消费量子对象（p 已由 learn_emotion_policy mode==0 归还）──
         int32 _c0 = qmeasure(consciousness, 0);
         int32 _c1 = qmeasure(consciousness, 1);
-        int32 _h0 = qmeasure(h, 0);
+        int32 _h0 = h.measure();
 
         case_id = case_id + 1;
-        if (case_id > 2) { case_id = 0; }
+        if (case_id > 8) { case_id = 0; }
 
         t = t + 1;
     }

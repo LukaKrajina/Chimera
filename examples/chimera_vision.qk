@@ -1,8 +1,9 @@
-// chimera_vision.qk —— Chimera 图像识别示例
+// chimera_vision.qk —— Chimera 图像识别示例（真实图像）
 //
-// 识别 4 类「量子图像」（cat / dog / car / tree），每类用 1 qubit 振幅编码
-// 为类别指纹；输入图像编码为单 qubit 感知态，用量子注意力 qattention 与原型
-// 指纹做最近邻匹配，情绪策略（EmotionPolicy）调制识别置信度，元认知核认识错误并反思。
+// 识别 4 类真实灰度图像（cat / dog / car / tree，8×8 PGM，assets/ 目录）。
+// 输入与原型均用 encode_image(path, 6) 做 6-qubit 振幅编码（真实像素 → 态振幅），
+// 用量子注意力 qattention 与 4 个原型图像态做最近邻匹配，情绪策略调制置信度，
+// 元认知核认识错误并反思。
 //
 // 复用组件（include 展开，coord 已隔离）：
 //   chimera_consciousness.qk —— chaos_drift / measure_emotion（② 混沌意识核）
@@ -10,12 +11,11 @@
 //   chimera_dream.qk          —— improve_drift / learn_emotion_policy（⑤ 几何优化器）
 //   chimera_metacognition.qk  —— recognize_error / reflect_and_learn（⑥ 元认知核）
 //
-// 统一走 mode==1（完整 QGT 自然梯度）：learn_emotion_policy 与 improve_drift 均 mode==1。
-// 注意：learn_emotion_policy 的判定态是 basis_state（单 qubit），故感知态也须单 qubit，
-//       否则 qattention 维度不匹配返回 0、梯度恒为 0。意识核保持 2 qubit（CNOT 纠缠）。
-//
+// 反思统一走 mode==0（reward 规则）：真实图像感知态是 6 qubit，而 learn_emotion_policy
+// 的判定态目前是单 qubit（basis_state），二者维度不匹配时 qattention 会静默失效，
+// 故图像任务用 mode==0 的 reward 规则（不依赖感知态维度）。 **0.7.0已修复，可mode = 1**
 // 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12) 避免 E-TOP003。
-// 运行前需启动守护进程：./runtime --daemon
+// 图像路径相对运行时 cwd（建议 cd 到 Chimera 目录后 qk run）。
 
 include "../src/chimera_consciousness.qk";
 include "../src/chimera_decision.qk";
@@ -24,29 +24,29 @@ include "../src/chimera_metacognition.qk";
 
 @layer(time=0, thread=0, coord=(12))
 int32 quark_main() {
-    EmotionPolicy policy = init_policy();   // 无偏猜测（各情绪态阈值 0.5）
-    double dt = 0.6;                         // 漂移步长
-    double target = 0.5;                     // 混沌边缘目标
+    EmotionPolicy policy = init_policy();
+    double dt = 0.6;
+    double target = 0.5;
 
     int32 correct = 0;
     int32 total = 0;
-    int32 label = 0;                         // 当前输入图像的真实类别 0..3
+    int32 label = 0;
 
     int32 t = 0;
     while (t < 80) {
-        // ── 当前输入图像（真实类别 label 对应的指纹字符串）──
-        string image = "cat";
+        // ── 当前输入图像（真实类别 label 对应的文件路径）──
+        string image_file = "assets/cat.pgm";
         route (label) {
-            path 0: { image = "cat"; }
-            path 1: { image = "dog"; }
-            path 2: { image = "car"; }
-            path 3: { image = "tree"; }
+            path 0: { image_file = "assets/cat.pgm"; }
+            path 1: { image_file = "assets/dog.pgm"; }
+            path 2: { image_file = "assets/car.pgm"; }
+            path 3: { image_file = "assets/tree.pgm"; }
         }
 
-        // ── ① 感知场：图像 → 单 qubit 感知态（对齐判定态维度）──
-        auto perception = encode_amplitudes(image, 1);
+        // ── ① 感知场：真实图像 → 6-qubit 振幅编码 ──
+        auto perception = encode_image(image_file, 6);
 
-        // ── ② 混沌意识核：漂移 → 情绪涌现（非破坏软测量）──
+        // ── ② 混沌意识核：kicked-top 漂移 → 情绪涌现 ──
         auto consciousness = new QuantumRegister(2);
         int32 s = 0;
         while (s < 10) {
@@ -57,17 +57,17 @@ int32 quark_main() {
         int32 emo = reading.state;
         consciousness = reading.consciousness;
 
-        // ── ③ 证据强度 = 意识核尖锐度 |⟨Z⟩|（demo 同款，避开维度不匹配）──
+        // ── ③ 证据强度 = 意识核尖锐度 |⟨Z⟩| ──
         double evidence = qexpect_z(consciousness, 0);
         if (evidence < 0.0) {
             evidence = -evidence;
         }
 
-        // ── ③ 类别匹配：感知态与 4 个单 qubit 原型指纹的态重叠 ──
-        auto p0 = encode_amplitudes("cat", 1);
-        auto p1 = encode_amplitudes("dog", 1);
-        auto p2 = encode_amplitudes("car", 1);
-        auto p3 = encode_amplitudes("tree", 1);
+        // ── ③ 类别匹配：感知态与 4 个原型图像态的态重叠（6 qubit）──
+        auto p0 = encode_image("assets/cat.pgm", 6);
+        auto p1 = encode_image("assets/dog.pgm", 6);
+        auto p2 = encode_image("assets/car.pgm", 6);
+        auto p3 = encode_image("assets/tree.pgm", 6);
         double s0 = qattention(perception, p0);
         double s1 = qattention(perception, p1);
         double s2 = qattention(perception, p2);
@@ -87,7 +87,7 @@ int32 quark_main() {
         }
         total = total + 1;
 
-        // ── ④ 反思（例行）：learn_emotion_policy mode==1（完整 QGT，消费 perception）──
+        // ── ④ 反思（例行）：mode==0 reward 规则（不依赖感知态维度）──
         double reward = 0.0;
         if (accepted == 1) {
             if (pred == label) {
@@ -96,7 +96,7 @@ int32 quark_main() {
                 reward = -1.0;
             }
         }
-        policy = learn_emotion_policy(policy, emo, reward, perception, 1);
+        policy = learn_emotion_policy(policy, emo, reward, perception, 0);
 
         // ── ⑥ 元认知：认识错误 → 反思学习 ──
         double pred_angle = 0.0;
@@ -113,27 +113,26 @@ int32 quark_main() {
             path 2: { true_angle = 1.0; }
             path 3: { true_angle = 1.5; }
         }
-        auto predicted = basis_state(pred_angle * 3.14159, 0.0, 0);
-        auto actual    = basis_state(true_angle * 3.14159, 0.0, 0);
+        auto predicted = basis_state(pred_angle * 3.14159265358979, 0.0, 0);
+        auto actual    = basis_state(true_angle * 3.14159265358979, 0.0, 0);
         ErrorReading err = recognize_error(predicted, actual);
         policy = reflect_and_learn(policy, emo, err, reward);
 
-        // ── ⑤ 几何优化：漂移步长收敛到混沌边缘（mode==1 完整 QGT）──
+        // ── ⑤ 几何优化：漂移步长收敛到混沌边缘 ──
         dt = improve_drift(dt, target, 1);
 
-        // ── 消费剩余量子对象（QLT 线性类型；perception 已由 learn_emotion_policy 消费）──
-        int32 _c0 = qmeasure(consciousness, 0);
-        int32 _c1 = qmeasure(consciousness, 1);
-        int32 _q0 = qmeasure(p0, 0);
-        int32 _r0 = qmeasure(p1, 0);
-        int32 _u0 = qmeasure(p2, 0);
-        int32 _w0 = qmeasure(p3, 0);
+        // ── 消费量子对象（QLT 线性类型；perception 已由 learn_emotion_policy mode==0 归还）──
+        int32 _p = perception.measure();
+        int32 _q0 = p0.measure();
+        int32 _q1 = p1.measure();
+        int32 _q2 = p2.measure();
+        int32 _q3 = p3.measure();
+        int32 _c = consciousness.measure();
 
         label = label + 1;
         if (label > 3) {
             label = 0;
         }
-
         t = t + 1;
     }
 

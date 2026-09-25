@@ -10,12 +10,16 @@
 //
 // 依赖 Quark：qexpect_z（非破坏期望）、qattention（态重叠）、encode_text
 
-// 做梦：准备 dt 漂移后的记忆态（演化世界的一次「梦境」）
-// 记忆态用振幅编码压到 2 qubit（自适应感知分配：naive 48 qubit 超限时自动
-// 走振幅编码；这里显式 2 qubit，与意识核同维度，便于重叠/漂移）。
+// 做梦：准备 dt 相位编码的记忆态（演化世界的一次「梦境」），再漂移 dt。
+// 记忆态用 dt 的相位编码，使梦境随漂移步长变化；
+// 真实的历史轨迹回放需运行时维护轨迹缓冲，见扩展方向。
 @layer(time=0, thread=0, coord=(4))
 QObject dream_state(double dt) {
-    auto world = encode_amplitudes("memory", 2);
+    auto world = new QuantumRegister(2);
+    // dt 相位编码进 qubit 0（H→Rz→H 构造 Rz 相位，|0⟩ 上 Rz 无效果需先叠加）
+    qgate_h(world, 0);
+    qgate_rz(world, 0, dt * 3.14159265358979);
+    qgate_h(world, 0);
     world = chaos_drift(world, dt);
     return world;
 }
@@ -28,7 +32,7 @@ double quality_of(QObject state) {
 
 // 几何优化漂移步长 dt：双轨梯度
 //   mode=0：有限差分（通用，QVM/QM 均适用）
-//   mode=1：完整 QGT 自然梯度（Fubini-Study 度量，用态重叠组装）
+//   mode=1：QGT 自然梯度（Fubini-Study 度量，用态重叠组装）
 @layer(time=0, thread=0, coord=(6))
 double improve_drift(double dt, double target, int32 mode) {
     double h = 0.01;
@@ -44,7 +48,7 @@ double improve_drift(double dt, double target, int32 mode) {
         // 有限差分：直接欧氏梯度步
         return dt - 0.1 * dl;
     } else {
-        // 完整 QGT 自然梯度：
+        // QGT 自然梯度：
         //   Fubini-Study 度量 G ≈ (1 − |⟨Ψ(dt)|Ψ(dt+h)⟩|²)/h²
         auto s0 = dream_state(dt);
         auto s1 = dream_state(dt + h);
@@ -61,13 +65,33 @@ double improve_drift(double dt, double target, int32 mode) {
     }
 }
 
+// 判定态 |d(θ)⟩ = θ 参数化的 N-qubit 变分电路：
+//   每个 qubit 经 H→Rz(θ·π·(1+i))，再环形 CNOT 纠缠。
+// 维度 N 对齐感知态（用 qobj_num_qubits 查询），使 qattention 有非零梯度。
+@layer(time=0, thread=0, coord=(13))
+QObject decision_state(double theta, int32 num_qubits) {
+    auto d = new QuantumRegister(num_qubits);
+    int32 i = 0;
+    while (i < num_qubits) {
+        qgate_h(d, i);
+        qgate_rz(d, i, theta * 3.14159265358979 * (1.0 + 1.0 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < num_qubits - 1) {
+        qgate_cnot(d, j, j + 1);
+        j = j + 1;
+    }
+    return d;
+}
+
 // 反思学习情绪策略：双轨
 //   mode=0：reward 规则（启发式，简单，无感知态依赖，真实 QM 友好）
 //     reward > 0（决策好）→ 阈值减小（更果断）
 //     reward < 0（决策坏）→ 阈值增大（更犹豫）
 //   mode=1：完整 QGT 自然梯度（判定态参数化，几何感知，QVM 更优）
-//     判定态 |d(θ)⟩ = basis_state(θ·π)，决策质量 f(θ) = |⟨d(θ)|perception⟩|²
-//     自然梯度上升 θ += lr·G⁻¹·∇f，G = (1−|⟨d(θ)|d(θ+h)⟩|²)/h²
+//     判定态 |d(θ)⟩ = decision_state(θ, nq)（多 qubit 变分 ansatz，维度对齐感知态），
+//     决策质量 f(θ) = |⟨d(θ)|perception⟩|²，自然梯度 θ += lr·G⁻¹·∇f
 // 情绪态从无偏 0.5 分化，学习出各自的「果断度」——情绪是学习产生的
 @layer(time=0, thread=0, coord=(7))
 EmotionPolicy learn_emotion_policy(EmotionPolicy policy, int32 emotion_state,
@@ -95,18 +119,20 @@ EmotionPolicy learn_emotion_policy(EmotionPolicy policy, int32 emotion_state,
         }
 
         // 决策质量 f(θ) = |⟨d(θ)|perception⟩|²（判定态与感知态的重叠）
-        // 判定态具名化，以便 QLT 末尾消费（单 qubit）
-        auto d_center = basis_state(theta * 3.14159, 0.0, 0);
-        auto d_plus   = basis_state((theta + h) * 3.14159, 0.0, 0);
-        auto d_minus  = basis_state((theta - h) * 3.14159, 0.0, 0);
+        // 判定态用多 qubit 变分 ansatz（decision_state），维度对齐感知态，
+        // 使 qattention 有非零梯度（替代单 qubit basis_state 的过度简化）
+        int32 nq = qobj_num_qubits(perception);
+        auto d_center = decision_state(theta, nq);
+        auto d_plus   = decision_state(theta + h, nq);
+        auto d_minus  = decision_state(theta - h, nq);
         double f_center = qattention(d_center, perception);
         double f_plus   = qattention(d_plus, perception);
         double f_minus  = qattention(d_minus, perception);
         double grad = (f_plus - f_minus) / (2.0 * h);
 
         // QGT 度量：G = (1 − |⟨d(θ)|d(θ+h)⟩|²)/h²
-        auto d0 = basis_state(theta * 3.14159, 0.0, 0);
-        auto d1 = basis_state((theta + h) * 3.14159, 0.0, 0);
+        auto d0 = decision_state(theta, nq);
+        auto d1 = decision_state(theta + h, nq);
         double overlap = qattention(d0, d1);
         double G = (1.0 - overlap) / (h * h);
         if (G < 0.000001) {
@@ -129,12 +155,12 @@ EmotionPolicy learn_emotion_policy(EmotionPolicy policy, int32 emotion_state,
             path 3: { policy.threshold3 = new_theta; }
         }
 
-        // 消费 QLT 线性类型（判定态均为单 qubit）
-        int32 _dc = qmeasure(d_center, 0);
-        int32 _dp = qmeasure(d_plus, 0);
-        int32 _dm = qmeasure(d_minus, 0);
-        int32 _d0 = qmeasure(d0, 0);
-        int32 _d1 = qmeasure(d1, 0);
+        // 消费 QLT 线性类型（多 qubit 判定态用 .measure() 一次性消费）
+        int32 _dc = d_center.measure();
+        int32 _dp = d_plus.measure();
+        int32 _dm = d_minus.measure();
+        int32 _d0 = d0.measure();
+        int32 _d1 = d1.measure();
 
         return policy;
     }

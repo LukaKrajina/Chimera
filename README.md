@@ -1,4 +1,25 @@
-# Chimera —— 量子混沌元认知架构
+# ⚛️ Chimera —— 量子混沌元认知架构
+
+<div align="center">
+
+**量子 + 经典 + 混沌意识 · 三体合一**
+
+[![GitHub stars](https://img.shields.io/github/stars/LukaKrajina/Chimera?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LukaKrajina/Chimera/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/LukaKrajina/Chimera?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LukaKrajina/Chimera/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/LukaKrajina/Chimera?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LukaKrajina/Chimera/issues)
+[![Contributors](https://img.shields.io/github/contributors/LukaKrajina/Chimera?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LukaKrajina/Chimera/graphs/contributors)
+[![Pull Requests](https://img.shields.io/github/issues-pr/LukaKrajina/Chimera?style=for-the-badge&logo=github&logoColor=white)](https://github.com/LukaKrajina/Chimera/pulls)
+
+[![Visitors](https://visitor-badge.laobi.icu/badge?page_id=LukaKrajina.Chimera&left_color=blueviolet&right_color=purple&left_text=Visitors)](https://github.com/LukaKrajina/Chimera)
+[![Last Commit](https://img.shields.io/github/last-commit/LukaKrajina/Chimera?style=for-the-badge)](https://github.com/LukaKrajina/Chimera/commits)
+[![Release](https://img.shields.io/github/v/release/LukaKrajina/Chimera?style=for-the-badge)](https://github.com/LukaKrajina/Chimera/releases)
+
+[![License](https://img.shields.io/badge/License-MIT-brightgreen?style=for-the-badge)](LICENSE)
+[![Language](https://img.shields.io/badge/Language-qk-8250df?style=for-the-badge)](https://github.com/LukaKrajina/Quark)
+[![Top Language](https://img.shields.io/github/languages/top/LukaKrajina/Chimera?style=for-the-badge)](https://github.com/LukaKrajina/Chimera)
+[![Paradigm](https://img.shields.io/badge/Paradigm-Quantum_Chaotic_Meta--Cognition-6f42c1?style=for-the-badge)]()
+
+</div>
 
 > **重要声明**：本文中关于「量子混沌态」「意识随时间漂移」「情绪影响决策」等论述，
 > **仅仅是本人灵光一动的构思**，并非经过实验验证或同行评议的科学结论；所引论文
@@ -85,8 +106,10 @@ Busemeyer）所刻画的人类决策：叠加（犹豫）、测量（果断）�
                 └─────────────────────────────────────────┘
 ```
 
-- **① 感知场**：经典输入编码为量子态（`encode_text` / `basis_state`）。
-- **② 混沌意识核**：`|Ψ(t)⟩` 是 N-qubit 量子混沌态，逐时间点漂移；测量坍缩为情绪
+- **① 感知场**：经典输入编码为量子态（`encode_text` / `basis_state` / `encode_image`
+  真实图像像素振幅编码）。
+- **② 混沌意识核**：`|Ψ(t)⟩` 是 N-qubit 量子混沌态（量子 kicked top 漂移），逐时间点漂移；
+  软测量（非破坏 ⟨Z⟩ 符号阈值化，弱测量经典极限）读为情绪
   `e(t) ∈ {犹豫, 果断, 否认, 生气}`。
 - **③ 演化世界**：内部量子世界模型，回放历史轨迹、生成反事实（Dream-RSI 的「做梦」）。
 - **④ 决策引擎**：`e(t) × |φ(x)⟩` 的量子干涉 → 决策（量子认知）。
@@ -119,8 +142,9 @@ Busemeyer）所刻画的人类决策：叠加（犹豫）、测量（果断）�
 
 反思学习（`learn_emotion_policy`）：每个情绪态的决策反馈作为 reward，
 好的决策 → 阈值减小（更果断），坏的决策 → 阈值增大（更犹豫）。情绪从
-无偏猜测中**分化涌现**，而非硬编码列举。混沌意识核的漂移由迭代量子混沌
-电路驱动（Rz 无理角 + CNOT），测量 2 个「情绪 qubit」得到涌现态。
+无偏猜测中**分化涌现**，而非硬编码列举。混沌意识核的漂移由**量子 kicked top**
+（全局 X 踢 + ZZ 非线性扭转，可积性破缺产生真量子混沌）驱动，软测量 2 个
+「情绪 qubit」得到涌现态。
 
 **认识错误 → 反思学习**（`chimera_metacognition.qk`，⑥ 元认知核）：上述例行学习
 只用 `reward = evidence − 0.5` 的启发式代理，从不真正「知道」自己错了。元认知核
@@ -172,8 +196,8 @@ Chimera/
 
 | 组件 | 状态 | 说明 |
 | --- | --- | --- |
-| ① 感知场 | ✅ | `encode_text` / `basis_state` 编码 |
-| ② 混沌意识核 | ✅ | 无理角旋转 + CNOT 混沌漂移 + `qmeasure` 情绪态涌现 |
+| ① 感知场 | ✅ | `encode_text` / `basis_state` / `encode_image`（真实图像像素振幅编码）|
+| ② 混沌意识核 | ✅ | 量子 kicked top（X 踢 + ZZ 扭转）混沌漂移 + 软测量（`qexpect_z` ⟨Z⟩ 阈值）情绪态涌现 |
 | ③ 演化世界 | ✅ | `dream_state` 回放 + `improve_drift` 双轨优化 |
 | ④ 决策引擎 | ✅ | 情绪策略（`EmotionPolicy` 可学习）× 证据强度 |
 | ⑤ 几何优化器 | ✅ | 有限差分 + 完整 QGT 自然梯度（双轨，mode 切换） |

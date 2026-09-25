@@ -74,7 +74,7 @@ EmotionPolicy reflect_and_learn(EmotionPolicy policy, int32 emotion_state,
     double amplification = 1.0;
     int32 k = 0;
     while (k < 3) {
-        auto reflect = basis_state(err.error * 3.14159, 0.0, 0);
+        auto reflect = basis_state(err.error * 3.14159265358979, 0.0, 0);
         double z = qexpect_z(reflect, 0);
         int32 _ = qmeasure(reflect, 0);               // 消费反思态（QLT）
         if (z < 0.0) {
