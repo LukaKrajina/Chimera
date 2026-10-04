@@ -1,0 +1,63 @@
+// chimera_qrl.qk —— 量子强化决策引擎（QRL，Quantum Reinforcement Learning）
+//
+// QRL survey、量子策略（多层变分 ansatz + 测量坍缩出动作）、量子值函数（⟨Z⟩ 尖锐度作价值）、
+//       策略梯度（优势驱动的 θ 更新，可训练性诊断 + 代理梯度自适应），与 Chimera 的
+//       情绪策略（EmotionPolicy）互补：情绪调制阈值做「是否行动」，QRL 做「如何行动」。
+//
+// 量子策略：多层变分 ansatz（参数化旋转 + 环形纠缠）+ 测量坍缩出动作（0/1）
+//  消费 state（参数所有权转移，末尾 release 剩余 qubit），返回动作。
+@layer(time=0, thread=0, coord=(35))
+int32 qrl_policy(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));   // 参数化旋转（多层权重）
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);                    // 环形纠缠（策略态整合）
+        j = j + 1;
+    }
+    return qmeasure(state, 0);   // 测量坍缩出动作（部分坍缩）
+}
+
+// 量子值函数：态的价值 = ⟨Z⟩（越确定越有价值，信心即价值）
+//  消费 state，返回价值 ∈ [-1,1]。
+@layer(time=0, thread=0, coord=(36))
+double qrl_value(QObject state) {
+    double z = qexpect_z(state, 0);
+    int32 _ = state.measure();   // 消费（QLT）
+    return z;
+}
+
+// 策略梯度更新：θ ← θ + lr · 代理梯度（优势）
+//  对应 REINFORCE / GRPO 的策略更新，但学习率由「可训练性诊断」（DLA 维数，
+//  贫瘠高原风险）自适应调制，梯度用代理梯度（surrogate，|优势| 大时软截断避免过冲）。
+@layer(time=0, thread=0, coord=(37))
+double qrl_update(double theta, double reward, double baseline) {
+    double A = reward - baseline;                 // 优势（REINFORCE/GRPO）
+    // 可训练性诊断：DLA 维数越大 → 贫瘠高原风险越高 → 学习率越小
+    int32 d = dla_dim("X,Z", 1);                  // su(2) → 3（基准）
+    double trainable = 3.0 / (3.0 + 0.1 * (d - 3.0));
+    // 代理梯度：尖峰梯度（|A| < gamma 时有梯度，远离衰减）
+    double grad = surrogate(A, 0.0, 1.5);
+    double lr = 0.05 * trainable;
+    double new_theta = theta + lr * grad;
+    if (new_theta < 0.0) {
+        new_theta = 0.0;
+    }
+    if (new_theta > 1.0) {
+        new_theta = 1.0;
+    }
+    return new_theta;
+}
+
+// parameter-shift 策略梯度：∂J/∂θ = [f(θ+π/2) − f(θ−π/2)] / 2
+//  Quark 的 parameter-shift 规则（QML 标准），输入 θ±π/2 处的策略表现 f_plus/f_minus，
+//  返回解析梯度（区别于 REINFORCE 的采样梯度），供 qrl_update 使用。
+@layer(time=0, thread=0, coord=(41))
+double qrl_policy_gradient(double f_plus, double f_minus) {
+    return (f_plus - f_minus) / 2.0;
+}

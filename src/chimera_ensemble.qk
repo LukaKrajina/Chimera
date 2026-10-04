@@ -1,0 +1,114 @@
+// chimera_ensemble.qk —— 量子集成学习
+
+// 量子 Bagging：自举采样 + 测量（多样本投票）
+@layer(time=0, thread=0, coord=(1260))
+QObject bagging_quantum(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// 量子 Boosting：误差/权重编码态重叠调制加权重采样
+@layer(time=0, thread=0, coord=(1261))
+double boosting_quantum(double error, double weight) {
+    auto e_state = basis_state(error * PI!(), 0.0, 0);
+    auto w_state = basis_state(weight * PI!(), 0.0, 0);
+    double overlap = qattention(e_state, w_state);
+    int32 _a = e_state.measure();
+    int32 _b = w_state.measure();
+    return weight * (1.0 + error) * (0.5 + overlap);
+}
+
+// 量子 Stacking：基学习器编码态重叠 → 元学习器软融合
+@layer(time=0, thread=0, coord=(1262))
+double stacking_quantum(double base1, double base2) {
+    auto s1 = basis_state(base1 * PI!(), 0.0, 0);
+    auto s2 = basis_state(base2 * PI!(), 0.0, 0);
+    double overlap = qattention(s1, s2);
+    int32 _a = s1.measure();
+    int32 _b = s2.measure();
+    return boltzmann2(base1, base2, 1.0) * (0.5 + overlap);
+}
+
+// 集成多样性：多 shot 模型间保真度（正交性）
+@layer(time=0, thread=0, coord=(1263))
+double ensemble_diversity(QObject model_a, QObject model_b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(model_a, model_b);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = model_a.measure();
+    int32 _b = model_b.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 加权投票：score 编码态多 shot 期望 → 玻尔兹曼加权
+@layer(time=0, thread=0, coord=(1264))
+double weighted_vote(double score, double temperature) {
+    auto state = basis_state(score * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}
+
+// Dropout 集成：随机丢弃 + 相位扰动
+@layer(time=0, thread=0, coord=(1265))
+QObject dropout_ensemble(QObject state, double drop_prob) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, (1.0 - drop_prob) * 0.1);
+        i = i + 1;
+    }
+    if (drop_prob > 0.5) {
+        int32 _ = qmeasure(state, 0);
+    }
+    return state;
+}
+
+// 自举量子态：重采样（相位扰动 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1266))
+QObject bootstrap_qstate(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 模型委员会：两路输出编码态重叠 → logsumexp 软仲裁
+@layer(time=0, thread=0, coord=(1267))
+double model_committee(double a, double b) {
+    auto s_a = basis_state(a * PI!(), 0.0, 0);
+    auto s_b = basis_state(b * PI!(), 0.0, 0);
+    double overlap = qattention(s_a, s_b);
+    int32 _a = s_a.measure();
+    int32 _b = s_b.measure();
+    double lse = logsumexp2(a, b, 1.0);
+    return (1.0 / (1.0 + lse)) * (0.5 + overlap);
+}

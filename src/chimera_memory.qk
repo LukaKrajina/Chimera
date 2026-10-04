@@ -1,0 +1,30 @@
+// chimera_memory.qk —— 量子关联记忆（曲面体 holonomy 记忆 + polymer 铁磁关联）
+//
+// 对应现代 LLM 的 KV Cache / 长期记忆。记忆不是「键值数组缓存」，而是
+// 曲面体上闭合回路的 holonomy（和乐）——沿测地线绕一圈积累的几何相位，
+// 关联强度由 polymer 铁磁配分函数（自旋链）刻画。
+//
+// KV cache 的「键值存储」使用「holonomy 累积 + polymer 铁磁关联」——
+//       记忆 = 沿测地线移动积累的相位和（关联强度 = 自旋链配分函数），
+//       召回 = 玻尔兹曼软匹配（非硬 1−d/3）。记忆是几何量而非数据副本，
+//       天然支持「模糊召回」（测地线距离的软匹配）。
+
+// 记忆更新：沿测地线把新输入累积进记忆（holonomy 累积 + polymer 铁磁关联强度）
+@layer(time=0, thread=0, coord=(62))
+double memory_update(double mem, double input, double alpha) {
+    double d = hyperbolic_distance(mem, input);   // 新输入与记忆的测地线距离
+    if (d < 0.0) { d = 0.0; }
+    // polymer 铁磁权重：自旋链配分函数（记忆的关联强度，非平凡非线性）
+    double pw = polymer_weight(1.0, input, 3.0);
+    if (pw > 1.0) { pw = 1.0; }
+    return mem + alpha * d * (1.0 + pw * 0.5);    // 关联强度加权的 holonomy 累积
+}
+
+// 记忆召回：记忆与查询的玻尔兹曼软匹配（非欧软匹配，d=0 → 1）
+@layer(time=0, thread=0, coord=(63))
+double memory_recall(double mem, double query) {
+    double d = hyperbolic_distance(mem, query);
+    if (d < 0.0) { d = 3.0; }
+    // 玻尔兹曼软匹配：2·σ(−d)（d=0 → 1，d→∞ → 0，真玻尔兹曼分布）
+    return 2.0 * boltzmann2(1.0, 0.0, -d);
+}

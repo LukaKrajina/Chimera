@@ -1,0 +1,47 @@
+// chimera_positional.qk —— 量子位置编码（曲面体测地线 holonomy + polymer 版）
+//
+// 对应 Transformer 的 Positional Encoding / RoPE，但把「层」的欧几里德平面旋转
+// 升级为「曲面体」的几何：
+//   - 位置 = 曲面体上的测地线弧长参数（非欧位置）
+//   - 相位 = 沿测地线平行传输的 holonomy（Berry 相位）+ polymer 铁磁关联
+//   - 位置关系 = 测地线距离（非欧距离，非 |pos1−pos2|）
+//
+// RoPE 的 θ_i = pos · base^{-2i/d}（欧几里德旋转）被量子化为
+//       「测地线 holonomy 相位 + polymer 铁磁关联」——位置编码变成几何相位，
+//       关联强度由 polymer 铁磁配分函数（自旋链）刻画，位置差变成曲率加权的
+//       非欧距离。这是「曲面体」替代「层堆叠」的第一块砖。
+//
+// 依赖 Quark：qgate_rz（相位注入）、qobj_num_qubits、hyperbolic_distance（测地线）、
+//             polymer_weight（铁磁关联）
+
+// 位置 holonomy 相位：位置沿测地线平行传输积累的相位（polymer 铁磁加权）
+@layer(time=0, thread=0, coord=(18))
+double positional_phase(double pos, double freq) {
+    // polymer 铁磁权重：自旋链配分函数（非欧位置的关联强度）
+    double pw = polymer_weight(1.0, pos, 2.0);
+    return pos * freq * (1.0 + pw * 0.1);   // polymer 加权的 holonomy 相位
+}
+
+// 位置编码态：把 holonomy 相位沿测地线平行传输注入量子态
+//    对态的所有 qubit 施加差异化 Rz(θ_i)，等价于「沿测地线把切向量平行搬运」
+@layer(time=0, thread=0, coord=(19))
+QObject positional_encode(QObject state, double pos, double freq) {
+    double theta = positional_phase(pos, freq);
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));   // 逐 qubit 差异化相位
+        i = i + 1;
+    }
+    return state;
+}
+
+// 位置测地线距离：两个位置在曲面体上的非欧距离（测地线，非欧几里德差值）
+//    把位置压缩到 Poincaré 盘（tanh 式逼近），用双曲测地线距离度量位置关系
+@layer(time=0, thread=0, coord=(20))
+double positional_geodesic(double pos1, double pos2) {
+    // 压缩映射 x = pos / (1 + |pos|²)，把实数轴映到 (-0.5, 0.5) ⊂ 单位盘
+    double x1 = pos1 / (1.0 + pos1 * pos1);
+    double x2 = pos2 / (1.0 + pos2 * pos2);
+    return hyperbolic_distance(x1, x2);
+}

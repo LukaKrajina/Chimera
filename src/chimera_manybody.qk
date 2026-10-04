@@ -1,0 +1,144 @@
+// chimera_manybody.qk —— 量子多体意识场
+
+// 自旋玻璃态：挫折与多稳态（随机符号耦合 → 玻璃态能量景观）
+@layer(time=0, thread=0, coord=(1200))
+QObject spin_glass_state(QObject state, double frustration) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, frustration * (1.0 + 0.1 * j));
+        j = j + 1;
+    }
+    return state;
+}
+
+// 多体局域化：强无序驱动 + 短程纠缠 + 非线性势（局域化冻结记忆）
+@layer(time=0, thread=0, coord=(1201))
+QObject mbl_localization(QObject state, double disorder) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, disorder * (1.0 + 0.1 * i));   // 无序
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);   // 短程纠缠
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);   // 局域化非线性势
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 纠缠谱：扫描所有边，逐边 ZZ 关联的上包络（谱的离散采样）
+@layer(time=0, thread=0, coord=(1202))
+double entanglement_spectrum(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z;
+    }
+    double acc = 0.0;
+    int32 cut = 0;
+    while (cut < n - 1) {
+        int32 s = 0;
+        while (s < 4) {
+            qgate_cnot(state, cut, cut + 1);
+            double z = qexpect_z(state, cut + 1);
+            if (z < 0.0) { z = -z; }
+            acc = acc + z;
+            qgate_cnot(state, cut, cut + 1);
+            s = s + 1;
+        }
+        cut = cut + 1;
+    }
+    int32 _ = state.measure();
+    return acc / (4.0 * (n - 1));
+}
+
+// 序参量：⟨X⟩（横场 Ising 的自发对称破缺序参量，非 ⟨Z⟩）
+@layer(time=0, thread=0, coord=(1203))
+double order_parameter(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_h(state, 0);
+        acc = acc + qexpect_z(state, 0);
+        qgate_h(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 关联长度：两点 ZZ 关联 ⟨Z_i Z_j⟩（跨对象 CNOT，非保真度）
+@layer(time=0, thread=0, coord=(1204))
+double correlation_length(QObject a, QObject b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_cnot_pair(a, 0, b, 0);
+        acc = acc + qexpect_z(b, 0);
+        qgate_cnot_pair(a, 0, b, 0);
+        s = s + 1;
+    }
+    int32 _a = a.measure();
+    int32 _b = b.measure();
+    return acc / 8.0;
+}
+
+// 复本重叠：两个复本态的 SWAP 重叠（自旋玻璃序参量）
+@layer(time=0, thread=0, coord=(1205))
+double replica_overlap(QObject replica_a, QObject replica_b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(replica_a, replica_b);
+        s = s + 1;
+    }
+    int32 _a = replica_a.measure();
+    int32 _b = replica_b.measure();
+    return acc / 8.0;
+}
+
+// 量子相图：注入参数相位后测序参量 ⟨X⟩（相图坐标扫描）
+@layer(time=0, thread=0, coord=(1206))
+double quantum_phase_diagram(QObject state, double theta) {
+    qgate_rz(state, 0, theta);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_h(state, 0);
+        acc = acc + qexpect_z(state, 0);
+        qgate_h(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 热化探针：谱隙编码态多 shot 期望 → 热化速度
+@layer(time=0, thread=0, coord=(1207))
+double thermalization_probe(double gap) {
+    if (gap < 0.0) { gap = 0.0; }
+    auto state = basis_state(gap * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc * gap / (gap + 0.1);
+}

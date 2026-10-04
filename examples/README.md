@@ -56,13 +56,13 @@ qk run examples/component-demos/chimera_metacognition_demo.qk
   示例主程序统一用 `coord=(12)`，避免 `E-TOP003`（coord 相同 + time 相同）冲突。
 - **include 顺序**：`form` 需先定义后使用，顺序固定为
   `consciousness → decision → dream → metacognition`。
-- **反思 mode 选择**：图像/语言任务的感知态是多 qubit（`encode_image` 6 qubit /
-  `encode_amplitudes` 3 qubit），而 `learn_emotion_policy` mode==1 的判定态是单 qubit
-  `basis_state`，二者维度不匹配时 `qattention` 静默返回 0（梯度恒为 0）。故图像/语言
-  示例的反思走 **mode==0（reward 规则，不依赖感知态维度）**；`improve_drift` 仍 mode==1。
+- **反思 mode 选择**：`learn_emotion_policy` mode==1 的判定态已换成多 qubit 变分
+  ansatz `decision_state(θ, nq)`，用 `qobj_num_qubits(perception)` 对齐感知态维度
+  （图像 6 qubit / 语言 3 qubit），`qattention` 有非零梯度（0.7.0 起修复单 qubit
+  `basis_state` 的维度限制）。图像与语言示例统一走 **mode==1**。
 - **图像编码**：`encode_image(path, num_qubits)` 用 stb_image 加载真实图像（PNG/JPEG/
   BMP/PGM），强制灰度、下采样到 2^num_qubits 像素、归一化振幅编码。测试图在 `assets/`
-  （8×8 PGM：cat/dog/car/tree），路径相对运行时 cwd（建议 `cd Chimera` 后 `qk run`）。
+  （512×512 PNG：cat/dog/car/tree），路径相对运行时 cwd（建议 `cd Chimera` 后 `qk run`）。
 - **语言编码**：`encode_amplitudes(sentence, 3)` 做 3-qubit 字符 n-gram 量子指纹
   （量子最近邻），非深度语义理解；真正语义推理需接入 QLM 词嵌入（见扩展方向）。
 - **输出**：`qk_sys_logi` 打印统计量，返回编码后的 int32（`正确数 × 1000 + 总数`）。

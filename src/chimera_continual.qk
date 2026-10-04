@@ -1,0 +1,124 @@
+// chimera_continual.qk —— 量子连续学习
+
+// 遗忘探针：多 shot 新旧任务态保真度（灾难性遗忘检测）
+@layer(time=0, thread=0, coord=(1280))
+double forgetting_probe(QObject old_task, QObject new_task) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(old_task, new_task);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = old_task.measure();
+    int32 _b = new_task.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 量子 EWC：梯度/重要性编码态重叠调制的弹性权重固化
+@layer(time=0, thread=0, coord=(1281))
+double ewc_quantum(double grad, double importance, double lambda) {
+    auto g_state = basis_state(grad * PI!(), 0.0, 0);
+    auto imp_state = basis_state(importance * PI!(), 0.0, 0);
+    double overlap = qattention(g_state, imp_state);
+    int32 _a = g_state.measure();
+    int32 _b = imp_state.measure();
+    return grad * (1.0 + lambda * importance) * (0.5 + overlap);
+}
+
+// 记忆回放：旧任务样本回放（门电路实现，规避 QReservoir 依赖）
+@layer(time=0, thread=0, coord=(1282))
+QObject memory_replay(string old_sample, int32 qubits, int32 layers) {
+    auto data = encode_amplitudes(old_sample, 2);
+    int32 n = qobj_num_qubits(data);
+    int32 l = 0;
+    while (l < layers) {
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(data, i);
+            qgate_rz(data, i, 0.2 * (l + 1));
+            i = i + 1;
+        }
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(data, j, j + 1);
+            j = j + 1;
+        }
+        l = l + 1;
+    }
+    return data;
+}
+
+// 突触巩固：慢固化（相位冻结 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1283))
+QObject synaptic_consolidation(QObject state, double consolidate_rate) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, consolidate_rate * 0.5 * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 任务门控：任务信号编码态多 shot 期望 → 玻尔兹曼软门控
+@layer(time=0, thread=0, coord=(1284))
+double task_gate(double task_signal, double temperature) {
+    auto state = basis_state(task_signal * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}
+
+// 弹性权重固化：权重/重要性编码态重叠调制的更新约束
+@layer(time=0, thread=0, coord=(1285))
+double elastic_weight(double weight, double importance, double penalty) {
+    auto w_state = basis_state(weight * PI!(), 0.0, 0);
+    auto imp_state = basis_state(importance * PI!(), 0.0, 0);
+    double overlap = qattention(w_state, imp_state);
+    int32 _a = w_state.measure();
+    int32 _b = imp_state.measure();
+    return (weight - penalty * importance * weight) * (0.5 + overlap);
+}
+
+// 知识蒸馏：多 shot 师生保真度
+@layer(time=0, thread=0, coord=(1286))
+double knowledge_distill(QObject teacher, QObject student) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(teacher, student);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = teacher.measure();
+    int32 _b = student.measure();
+    return acc / 8.0;
+}
+
+// 可塑性-稳定性权衡：新旧梯度编码态重叠调制的平衡
+@layer(time=0, thread=0, coord=(1287))
+double plasticity_stability(double new_grad, double old_grad, double tradeoff) {
+    auto ng = basis_state(new_grad * PI!(), 0.0, 0);
+    auto og = basis_state(old_grad * PI!(), 0.0, 0);
+    double overlap = qattention(ng, og);
+    int32 _a = ng.measure();
+    int32 _b = og.measure();
+    return (tradeoff * new_grad + (1.0 - tradeoff) * old_grad) * (0.5 + overlap);
+}

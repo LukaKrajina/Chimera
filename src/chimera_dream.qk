@@ -18,7 +18,7 @@ QObject dream_state(double dt) {
     auto world = new QuantumRegister(2);
     // dt 相位编码进 qubit 0（H→Rz→H 构造 Rz 相位，|0⟩ 上 Rz 无效果需先叠加）
     qgate_h(world, 0);
-    qgate_rz(world, 0, dt * 3.14159265358979);
+    qgate_rz(world, 0, dt * PI!());
     qgate_h(world, 0);
     world = chaos_drift(world, dt);
     return world;
@@ -38,9 +38,14 @@ double improve_drift(double dt, double target, int32 mode) {
     double h = 0.01;
 
     // 欧氏梯度（有限差分，两轨共用）
-    double f_center = quality_of(dream_state(dt));
-    double f_plus   = quality_of(dream_state(dt + h));
-    double f_minus  = quality_of(dream_state(dt - h));
+    // 先具名化 dream_state 返回值，再传 quality_of（move 参数），避免「临时 QObject
+    // 作为参数」被 quality_of 内部 release + 本函数 temporaries release 双重释放。
+    auto s_center = dream_state(dt);
+    double f_center = quality_of(s_center);
+    auto s_plus = dream_state(dt + h);
+    double f_plus = quality_of(s_plus);
+    auto s_minus = dream_state(dt - h);
+    double f_minus = quality_of(s_minus);
     double grad = (f_plus - f_minus) / (2.0 * h);
     double dl = 2.0 * (f_center - target) * grad;
 
@@ -74,7 +79,7 @@ QObject decision_state(double theta, int32 num_qubits) {
     int32 i = 0;
     while (i < num_qubits) {
         qgate_h(d, i);
-        qgate_rz(d, i, theta * 3.14159265358979 * (1.0 + 1.0 * i));
+        qgate_rz(d, i, theta * PI!() * (1.0 + 1.0 * i));
         i = i + 1;
     }
     int32 j = 0;

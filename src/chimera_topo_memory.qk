@@ -1,0 +1,161 @@
+// chimera_topo_memory.qk —— 拓扑记忆场（8 组件）
+
+// 任意子编织记忆：编织（CNOT 交换对 = σ 生成元）积累拓扑相位
+@layer(time=0, thread=0, coord=(1040))
+QObject anyon_braid_memory(QObject state, int32 braid_steps) {
+    int32 n = qobj_num_qubits(state);
+    int32 s = 0;
+    while (s < braid_steps) {
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(state, j, j + 1);
+            qgate_cnot(state, j + 1, j);
+            qgate_cnot(state, j, j + 1);
+            j = j + 1;
+        }
+        s = s + 1;
+    }
+    return state;
+}
+
+// 拓扑序探针：Wilson 环——闭合编织一圈后读累积几何相位 ⟨Z⟩
+@layer(time=0, thread=0, coord=(1041))
+double topological_order_probe(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    if (n > 1) {
+        qgate_cnot(state, n - 1, 0);   // 闭合 Wilson 环
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 环面码记忆：plaquette（X 环）与 vertex（Z 星）稳定子编码
+@layer(time=0, thread=0, coord=(1042))
+QObject toric_code_memory(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    int32 k = 0;
+    while (k < n) {
+        qgate_rz(state, k, theta);
+        k = k + 1;
+    }
+    return state;
+}
+
+// 面码编码：数据 qubit + 稳定子测量（部分坍缩 = 征象提取）
+@layer(time=0, thread=0, coord=(1043))
+QObject surface_code_encode(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    if (n > 1) {
+        int32 _ = qmeasure(state, 0);
+    }
+    return state;
+}
+
+// 纠缠和乐：跨对象 CNOT 积累非局域几何相位
+@layer(time=0, thread=0, coord=(1044))
+QObject entanglement_holonomy(QObject state, double theta, int32 rounds) {
+    int32 n = qobj_num_qubits(state);
+    int32 r = 0;
+    while (r < rounds) {
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(state, j, j + 1);
+            j = j + 1;
+        }
+        if (n > 1) {
+            qgate_cnot(state, n - 1, 0);
+        }
+        int32 k = 0;
+        while (k < n) {
+            qgate_rz(state, k, theta);
+            k = k + 1;
+        }
+        r = r + 1;
+    }
+    return state;
+}
+
+// 纽结记忆：纽结不变量 = 与参考纽结的 SWAP 态重叠
+@layer(time=0, thread=0, coord=(1045))
+double knotted_memory(QObject knot_state, QObject reference) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(knot_state, reference);
+        s = s + 1;
+    }
+    int32 _a = knot_state.measure();
+    int32 _b = reference.measure();
+    return acc / 8.0;
+}
+
+// 编织群路由：相邻交换（σ_i 生成元）做置换路由
+@layer(time=0, thread=0, coord=(1046))
+QObject braid_group_router(QObject state, int32 swap_pos) {
+    int32 n = qobj_num_qubits(state);
+    if (swap_pos < 0) { swap_pos = 0; }
+    if (swap_pos >= n - 1) { swap_pos = n - 2; }
+    if (n > 1) {
+        qgate_cnot(state, swap_pos, swap_pos + 1);
+        qgate_cnot(state, swap_pos + 1, swap_pos);
+        qgate_cnot(state, swap_pos, swap_pos + 1);
+    }
+    return state;
+}
+
+// 拓扑荷：全局奇偶性 ZZ 关联（守恒量子数，非单 qubit ⟨Z⟩）
+@layer(time=0, thread=0, coord=(1047))
+double topological_charge(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z;
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_cnot(state, 0, 1);   // 奇偶性 ZZ（CNOT 自逆）
+        acc = acc + qexpect_z(state, 1);
+        qgate_cnot(state, 0, 1);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}

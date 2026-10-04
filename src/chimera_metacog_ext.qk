@@ -1,0 +1,125 @@
+// chimera_metacog_ext.qk —— 意识/元认知扩展
+
+// 自指循环：多 shot 态与其演化态的重叠 → 自指一致性信号
+@layer(time=0, thread=0, coord=(1070))
+double self_referential_loop(QObject state, QObject evolved_state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(state, evolved_state);
+        s = s + 1;
+    }
+    int32 _a = state.measure();
+    int32 _b = evolved_state.measure();
+    return acc / 8.0;
+}
+
+// 感受质熵：自备态制备 + 漂移 + 多 shot 测量 → 主观体验态香农熵
+@layer(time=0, thread=0, coord=(1071))
+double qualia_entropy(double theta, double dt, int32 steps) {
+    int32 n0 = 0; int32 n1 = 0; int32 n2 = 0; int32 n3 = 0;
+    int32 shots = 8;
+    for (int32 sh = 0; sh < shots; sh = sh + 1) {
+        auto psi = new QuantumRegister(2);
+        qgate_rz(psi, 0, theta);
+        qgate_h(psi, 0);
+        qgate_h(psi, 1);
+        int32 k = 0;
+        while (k < steps) {
+            qgate_h(psi, 0); qgate_rz(psi, 0, dt * GOLDEN_RATIO!()); qgate_h(psi, 0);
+            qgate_cnot(psi, 0, 1); qgate_rz(psi, 1, dt * SILVER_RATIO!()); qgate_cnot(psi, 0, 1);
+            k = k + 1;
+        }
+        int32 b0 = qmeasure(psi, 0);
+        int32 b1 = qmeasure(psi, 1);
+        int32 st = b0 * 2 + b1;
+        if (st == 0) { n0 = n0 + 1; }
+        if (st == 1) { n1 = n1 + 1; }
+        if (st == 2) { n2 = n2 + 1; }
+        if (st == 3) { n3 = n3 + 1; }
+    }
+    return shannon4(n0, n1, n2, n3);
+}
+
+// 注意聚光灯：坍缩聚焦到关键 qubit（其余保持叠加）
+@layer(time=0, thread=0, coord=(1072))
+QObject attentional_spotlight(QObject state, int32 focus_qubit) {
+    int32 n = qobj_num_qubits(state);
+    if (focus_qubit < 0) { focus_qubit = 0; }
+    if (focus_qubit >= n) { focus_qubit = n - 1; }
+    int32 _ = qmeasure(state, focus_qubit);
+    return state;
+}
+
+// 不确定处停顿：信心编码态多 shot 期望 → 停顿时长
+@layer(time=0, thread=0, coord=(1073))
+double uncertainty_pause(double confidence) {
+    auto state = basis_state(confidence * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return 1.0 - acc;
+}
+
+// 信心门控更新：梯度/信心编码态重叠 → 低信心更深学习
+@layer(time=0, thread=0, coord=(1074))
+double confidence_gated_update(double grad, double confidence, double base_lr) {
+    auto g_state = basis_state(grad * PI!(), 0.0, 0);
+    auto c_state = basis_state(confidence * PI!(), 0.0, 0);
+    double overlap = qattention(g_state, c_state);
+    int32 _a = g_state.measure();
+    int32 _b = c_state.measure();
+    double c = confidence;
+    if (c < 0.0) { c = -c; }
+    double lr = base_lr * (1.0 + (1.0 - c));
+    return lr * grad * (0.5 + overlap);
+}
+
+// 怀疑态：叠加的犹豫（H 门把确定态踢入叠加）
+@layer(time=0, thread=0, coord=(1075))
+QObject doubt_state(QObject state, double strength) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, strength);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 内省探针：自我监测 = ⟨Y⟩（Y 基自指投影，非纠缠熵）
+@layer(time=0, thread=0, coord=(1076))
+double introspective_probe(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_rz(state, 0, -HALF_PI!());   // S†
+        qgate_h(state, 0);
+        acc = acc + qexpect_z(state, 0);
+        qgate_h(state, 0);
+        qgate_rz(state, 0, HALF_PI!());    // S
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 自由能最小化：预测误差/熵编码态重叠 → F = 误差 − 温度×熵
+@layer(time=0, thread=0, coord=(1077))
+double free_energy_minimizer(double prediction_error, double entropy, double temperature) {
+    auto pe = basis_state(prediction_error * PI!(), 0.0, 0);
+    auto en = basis_state(entropy * PI!(), 0.0, 0);
+    double overlap = qattention(pe, en);
+    int32 _a = pe.measure();
+    int32 _b = en.measure();
+    return prediction_error - temperature * entropy * (0.5 + overlap);
+}

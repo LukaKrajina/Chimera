@@ -24,7 +24,7 @@ double chaos_richness(double dt, int32 steps) {
     int32 n1 = 0;
     int32 n2 = 0;
     int32 n3 = 0;
-    int32 shots = 32;
+    int32 shots = 8;   // 减少采样数避免单次 invoke qubit 累积触发 QVM MPS 切换（32→8）
 
     for (int32 s = 0; s < shots; s = s + 1) {
         auto psi = new QuantumRegister(2);

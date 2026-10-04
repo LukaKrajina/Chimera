@@ -1,0 +1,115 @@
+// chimera_language.qk —— 量子语言场（8 组件）
+
+// 量子词嵌入：叠加词义 + 参数化相位（多义并存）
+@layer(time=0, thread=0, coord=(1080))
+QObject quantum_word_embedding(string word, double theta) {
+    auto state = encode_amplitudes(word, 2);
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    return state;
+}
+
+// 语义干涉：多 shot 概念叠加重叠（合取谬误的量子干涉）
+@layer(time=0, thread=0, coord=(1081))
+double semantic_interference(QObject concept_a, QObject concept_b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(concept_a, concept_b);
+        s = s + 1;
+    }
+    int32 _a = concept_a.measure();
+    int32 _b = concept_b.measure();
+    return acc / 8.0;
+}
+
+// 概念对（概念纠缠返回两态）
+form ConceptPair {
+    QObject a;
+    QObject b;
+}
+
+// 概念纠缠：词义不可分（跨对象 CNOT 使两个概念纠缠）
+@layer(time=0, thread=0, coord=(1082))
+ConceptPair conceptual_entanglement(QObject a, QObject b) {
+    qgate_cnot_pair(a, 0, b, 0);
+    ConceptPair p = new ConceptPair();
+    p.a = a;
+    p.b = b;
+    return p;
+}
+
+// 语篇全息：整体编码（整段语篇 → 单个量子态，部分含整体的全息性）
+@layer(time=0, thread=0, coord=(1083))
+QObject discourse_holography(string discourse, double theta) {
+    auto state = encode_amplitudes(discourse, 2);
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    return state;
+}
+
+// 否定算子：X 翻转语义（|肯定⟩ ↔ |否定⟩ 的量子对偶）
+@layer(time=0, thread=0, coord=(1084))
+QObject negation_operator(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_x(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 歧义叠加：多义并存（H 门把确定义踢入多义叠加）
+@layer(time=0, thread=0, coord=(1085))
+QObject ambiguity_superposition(QObject state, double strength) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, strength);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 蕴含保真度：多 shot 前提↔结论保真度（语义蕴含）
+@layer(time=0, thread=0, coord=(1086))
+double entailment_fidelity(QObject premise, QObject conclusion) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(premise, conclusion);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = premise.measure();
+    int32 _b = conclusion.measure();
+    return acc / 8.0;
+}
+
+// 组合性门：语义组合规则（受控非 = 组合语义的量子门）
+@layer(time=0, thread=0, coord=(1087))
+QObject compositionality_gate(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    return state;
+}

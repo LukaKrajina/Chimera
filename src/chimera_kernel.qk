@@ -1,0 +1,126 @@
+// chimera_kernel.qk —— 量子核方法（8 组件）
+
+// 保真度核：多 shot k = |⟨φ(x)|φ(x')⟩|²
+@layer(time=0, thread=0, coord=(1250))
+double fidelity_kernel(QObject x, QObject x_prime) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(x, x_prime);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = x.measure();
+    int32 _b = x_prime.measure();
+    double f = acc / 8.0;
+    return f * f;
+}
+
+// 投影核：多 shot 态重叠 k = |⟨ψ|ψ'⟩|²
+@layer(time=0, thread=0, coord=(1251))
+double projected_kernel(QObject x, QObject x_prime) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(x, x_prime);
+        s = s + 1;
+    }
+    int32 _a = x.measure();
+    int32 _b = x_prime.measure();
+    return acc / 8.0;
+}
+
+// 核岭回归：核值编码态多 shot 期望 → 凸优化软读出
+@layer(time=0, thread=0, coord=(1252))
+double kernel_ridge(double kernel_value, double lambda) {
+    auto state = basis_state(kernel_value * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return acc / (acc + lambda);
+}
+
+// 量子 SVM：多 shot 支持向量/样本重叠 → 分类分
+@layer(time=0, thread=0, coord=(1253))
+double svm_quantum(QObject support, QObject sample) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(support, sample);
+        s = s + 1;
+    }
+    int32 _a = support.measure();
+    int32 _b = sample.measure();
+    return acc / 8.0;
+}
+
+// 核对齐：多 shot 核与目标对齐度
+@layer(time=0, thread=0, coord=(1254))
+double kernel_alignment(QObject a, QObject b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(a, b);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = a.measure();
+    int32 _b = b.measure();
+    return acc / 8.0;
+}
+
+// Nyström 近似：地标采样降维
+@layer(time=0, thread=0, coord=(1255))
+QObject nystrom_approx(QObject state, int32 landmarks) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < landmarks) {
+        if (i < n) {
+            int32 _ = qmeasure(state, i);
+        }
+        i = i + 1;
+    }
+    return state;
+}
+
+// 量子 Fisher 核：多 shot ⟨Z⟩ 尖锐度
+@layer(time=0, thread=0, coord=(1256))
+double fisher_kernel(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 核 PCA：旋转到主成分基后测第一主成分方差 ⟨Z⟩²
+@layer(time=0, thread=0, coord=(1257))
+double kernel_pca(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);   // 旋转到主成分基
+        i = i + 1;
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return acc * acc;
+}

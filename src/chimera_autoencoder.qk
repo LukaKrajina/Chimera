@@ -1,0 +1,128 @@
+// chimera_autoencoder.qk —— 量子压缩与自编码
+
+// 量子自编码器：压缩-解压（测量丢弃 + 重建）
+@layer(time=0, thread=0, coord=(1340))
+QObject quantum_autoencoder(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta);
+        i = i + 1;
+    }
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// 振幅压缩：Rz 相位压缩（振幅重分配 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1341))
+QObject amplitude_compress(QObject state, double rate) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, rate * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 有损编码：测量坍缩丢弃信息
+@layer(time=0, thread=0, coord=(1342))
+QObject lossy_encoding(QObject state) {
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// 量子去噪：谱隙调制去噪 + 环形纠缠 + tanh 非线性
+@layer(time=0, thread=0, coord=(1343))
+QObject denoising_quantum(QObject state, double noise) {
+    double gap = qk_qms_gap(0, noise, noise);
+    if (gap < 0.0) { gap = 0.0; }
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, gap * 0.5 * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 瓶颈态：低维（多轮测量压缩）
+@layer(time=0, thread=0, coord=(1344))
+QObject bottleneck_state(QObject state, int32 keep_qubits) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = keep_qubits;
+    while (i < n) {
+        int32 _ = qmeasure(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 变分编码器：多 shot ⟨Z⟩ 隐变量读出
+@layer(time=0, thread=0, coord=(1345))
+double variational_encoder(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 隐变量解缠：隐变量间 ZZ 关联（解缠 → 关联趋零）
+@layer(time=0, thread=0, coord=(1346))
+double latent_disentangle(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z;
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_cnot(state, 0, 1);
+        acc = acc + qexpect_z(state, 1);
+        qgate_cnot(state, 0, 1);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return 1.0 / (acc + 1.0);
+}
+
+// 率失真：多 shot 保真度（质量轴）
+@layer(time=0, thread=0, coord=(1347))
+double rate_distortion(QObject original, QObject compressed) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(original, compressed);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = original.measure();
+    int32 _b = compressed.measure();
+    return acc / 8.0;
+}

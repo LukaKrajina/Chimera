@@ -1,0 +1,121 @@
+// chimera_generative.qk —— 量子生成/想象/世界（7 组件）
+
+// 量子扩散步：去噪生成（Rz 旋转 + 环形纠缠 + 部分坍缩 = 噪声逐步去除）
+@layer(time=0, thread=0, coord=(1110))
+QObject quantum_diffusion_step(QObject state, double noise_level) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, 0.5 * (1.0 - noise_level));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    if (noise_level < 0.5) {
+        int32 _ = qmeasure(state, 0);
+    }
+    return state;
+}
+
+// 量子 GAN 判别器：多 shot 真实/生成态保真度 → 判别损失
+@layer(time=0, thread=0, coord=(1111))
+double quantum_gan_discriminator(QObject real, QObject generated) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(real, generated);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = real.measure();
+    int32 _b = generated.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 生成振幅流：振幅放大合成（H + 相位 → 生成目标振幅分布）
+@layer(time=0, thread=0, coord=(1112))
+QObject generative_amplitude_flow(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 梦境反事实："如果…会怎样"（反事实动作相位注入 + 漂移）
+@layer(time=0, thread=0, coord=(1113))
+QObject dream_counterfactual(QObject state, double counterfactual_action) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, counterfactual_action * 0.3926990817);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 世界模型预测：动作条件的下一状态（动作相位注入 + 混沌漂移）
+@layer(time=0, thread=0, coord=(1114))
+QObject world_model_predict(QObject state, double action, double dt) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, action * 0.3926990817);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_h(state, j);
+        qgate_rz(state, j, dt * (GOLDEN_RATIO!() + 0.1 * j));
+        j = j + 1;
+    }
+    return state;
+}
+
+// 隐空间行走：连续插值（参数化相位 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1115))
+QObject latent_space_walk(QObject state, double t) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, t * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 量子采样：玻恩概率采样（测量坍缩出样本）
+@layer(time=0, thread=0, coord=(1116))
+int32 quantum_sampling(QObject state, int32 qubit_idx) {
+    int32 n = qobj_num_qubits(state);
+    if (qubit_idx < 0) { qubit_idx = 0; }
+    if (qubit_idx >= n) { qubit_idx = n - 1; }
+    int32 sample = qmeasure(state, qubit_idx);
+    int32 _ = state.measure();
+    return sample;
+}

@@ -1,0 +1,61 @@
+// chimera_retrocausal.qk —— 逆因果预判（回程通信 / 反事实推理）
+//
+// 用 Quark 升级新增的「量子通道逆因果容量」（TQNF 第四支柱「因果」）度量
+// 「感知 → 决策 → 未来状态」有噪信道的回程能力。
+//
+// 物理：P-CTC 后选择闭合类时曲线（postselected closed timelike curve）——信息从
+// 未来「回传」现在。逆因果容量 = 未来状态（安全/危险）能否可靠回传到当前决策。
+//
+// 自动驾驶映射：
+//   - 信道 = 当前决策 → 未来状态（安全/危险）
+//   - 噪声 = 感知噪声（车道线模糊、雨雾、传感器误差）
+//   - 逆因果容量 = 未来危险信号「回传」现在的可靠度（预判置信度）
+//
+// 现有 12 组件全是「前向」——感知→意识→想象→决策→强化→元认知，做不到的：
+//   ① 逆因果安全预判：不依赖前向 world_rollout 模拟，直接度量「感知噪声下未来安全
+//      信号能否回传现在的决策」——雨雾/车道模糊时降速谨慎。
+//   ② 逆因果危险预判：偏离紧迫度 → CTC 回程增益 → 碰撞前「预感」危险（现有只靠
+//      collision_sensor 碰撞后触发，做不到碰撞前预警）。
+//   ③ 回程增益鲁棒性：逆因果通道经 P-CTC 后选择归一化对噪声高度鲁棒（gain 可达
+//      156），前向预测失效时回程通道仍能提取可靠信号。
+//
+// 依赖 Quark：retrocausal_c_capacity / retrocausal_ctc_gain / retrocausal_ctc_dephasing
+//            （纯数值函数，不分配 qubit，无 QObject 生命周期问题）
+
+// 感知噪声映射：车道检测不确定度 + 车辆偏离紧迫度 → 信道噪声 p
+//   evidence 偏离 0.5 = 车道检测模糊（不确定度 ∈ [0,1]）
+//   |lateral| = 车辆偏离紧迫度（米）
+@layer(time=0, thread=0, coord=(15))
+double sense_noise(double evidence, double lateral) {
+    double u = evidence - 0.5;
+    if (u < 0.0) { u = -u; }
+    double l = lateral;
+    if (l < 0.0) { l = -l; }
+    double p = 0.03 + 0.5 * u * 2.0 + 0.3 * l;
+    if (p > 0.5) { p = 0.5; }
+    if (p < 0.02) { p = 0.02; }
+    return p;
+}
+
+// 逆因果安全预判：退相逆因果经典容量（随噪声递减）→ 安全度
+//   噪声小 → 容量高（未来安全信号清晰回传）→ 安全度高
+//   噪声大 → 容量低（危险信号被淹没）→ 安全度低 → 降速谨慎
+@layer(time=0, thread=0, coord=(16))
+double retrocausal_safety(double evidence, double lateral) {
+    double p = sense_noise(evidence, lateral);
+    double ccap = retrocausal_c_capacity(1, p);   // 退相逆因果经典容量 ∈ [2,6]
+    double safety = ccap / (ccap + 3.0);          // logistic 归一化 ∈ [0.4, 0.67]
+    return safety;
+}
+
+// 逆因果危险预判：偏离紧迫度 → CTC 回程增益（对噪声高度鲁棒）→ 危险度
+//   偏离越大 → Wilson line θ 越大 → CTC 回程增益越高 → 逆因果「预感」越强 → 危险
+@layer(time=0, thread=0, coord=(17))
+double retrocausal_danger(double lateral) {
+    double l = lateral;
+    if (l < 0.0) { l = -l; }
+    double theta = 0.05 + 0.8 * l;                // 偏离 → Wilson line（快子 KK 额外维）
+    double g = retrocausal_ctc_gain(2, theta, 1.0, 1.0);
+    double danger = g / (g + 40.0);               // logistic 归一化 ∈ [0.03, 0.7]
+    return danger;
+}

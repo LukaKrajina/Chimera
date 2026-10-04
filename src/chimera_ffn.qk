@@ -1,0 +1,32 @@
+// chimera_ffn.qk —— 量子前馈层（曲面体纤维内非线性映射）
+//
+// 对应 Transformer 的 Feed-Forward Network（逐 token 非线性变换）。
+// FFN 不是「层间变换」，而是曲面体同一纤维内的逐点非线性自映射：
+//   线性（Rz 旋转）→ 非线性（tanh 量化软激活）→ 线性（门控相位回注）。
+//
+// FFN 的 GELU/ReLU 非线性被替换为 Quark 的 tanh_quantize 真·tanh 非线性
+//       + 8 位量化（非单次测量坍缩的近似），两层线性之间用真非线性激活，
+//       完整实现「线性 → 非线性 → 线性」的前馈结构。
+
+// 前馈一步：线性（Rz）→ 非线性（tanh 量化）→ 线性（相位回注）
+@layer(time=0, thread=0, coord=(22))
+QObject ffn_step(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    // 第一层：线性变换（参数化旋转）
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    // 非线性激活：tanh 量化（真 tanh 软激活 + 8 位量化，非单次测量坍缩）
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    // 第二层：非线性结果相位回注（门控旋转）
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, nl * QUARTER_PI!());
+        j = j + 1;
+    }
+    return state;
+}

@@ -1,0 +1,30 @@
+// chimera_loss.qk —— 量子损失（曲面体测地线长度 + QMS 谱隙正则）
+//
+// 对应 Transformer 的统一 Loss Function（交叉熵）。损失不是「对数似然」，
+// 而是曲面体上的「测地线长度平方」（预测与目标的 FS 距离平方 = 量子 Fisher
+// 信息的 Cramér-Rao 界），并加「量子 Markov 半群（QMS）谱隙正则」——
+// 谱隙刻画信道的混合速度，谱隙小（慢混合）→ 损失曲面平坦、梯度不可信 → 惩罚。
+//
+// 交叉熵的「对数似然」使用「测地线长度平方」+「QMS 谱隙正则」——
+//       损失 = Fubini-Study 距离（黎曼几何量，曲率感知）+ 量子信道的混合性，
+//       且与量子 Fisher 信息给出的参数估计下界一致。
+
+// 测地线损失：预测与目标的双曲测地线距离平方 + QMS 谱隙正则
+@layer(time=0, thread=0, coord=(66))
+double geodesic_loss(double pred, double target) {
+    double d = hyperbolic_distance(pred, target);
+    if (d < 0.0) { d = 3.0; }
+    double l2 = d * d;                          // 测地线长度平方（FS 距离²）
+    // QMS 谱隙（去相位信道 model=1）：gap 大 → 混合快 → 损失可信；gap 小 → 惩罚
+    double gap = qk_qms_gap(1, 0.2, 0.2);
+    if (gap < 0.0) { gap = 0.0; }
+    return l2 + 0.05 * (1.0 - gap);
+}
+
+// 损失梯度：测地线距离的曲率加权梯度（供 optimizer 使用）
+@layer(time=0, thread=0, coord=(67))
+double geodesic_loss_grad(double pred, double target) {
+    double d = hyperbolic_distance(pred, target);
+    if (d < 0.0) { d = 3.0; }
+    return 2.0 * d;                             // ∂(d²)/∂d = 2d
+}

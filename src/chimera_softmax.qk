@@ -1,0 +1,21 @@
+// chimera_softmax.qk —— 量子软注意力（曲面体曲率加权玻尔兹曼）
+//
+// 对应 Transformer 的 Softmax 温度缩放。softmax 用 Quark 的真·玻尔兹曼原语
+// boltzmann2（量子玻尔兹曼机的配分函数），而非手工 sigmoid 有理逼近：
+//   p(score) = e^{β·score} / (e^{β·score} + e^{β·0}) = σ(β·score)
+//   逆温 β = 曲率（度规）/ 温度：曲率大的地方（度规发散）温度低 → 注意力尖锐。
+//
+// softmax 的温度 T 使用「曲率温度」——Poincaré 度规在边界发散，
+//       靠近边界的 score 被强烈抑制，等价于「软阈值 + 尖锐化」的统一；
+//       实现下沉到 Quark runtime 的真·玻尔兹曼原语（非 qk 层标量近似）。
+
+// 曲率加权玻尔兹曼 softmax 权重（真玻尔兹曼分布 σ(β·score)）
+//   boltzmann2(1, 0, β) 返回 σ(β)（1 相对 0 的玻尔兹曼加权均值），
+//   故 boltzmann2(1, 0, β·score) = σ(β·score) ∈ (0,1)。
+@layer(time=0, thread=0, coord=(25))
+double softmax_weight(double score, double temperature) {
+    double g = hyperbolic_metric(score);      // 曲率（度规，边界发散）
+    if (g > 100.0) { g = 100.0; }
+    double beta = g / temperature;            // 逆温：曲率大 → 温度低 → 尖锐
+    return boltzmann2(1.0, 0.0, beta * score);
+}

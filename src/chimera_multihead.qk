@@ -1,0 +1,22 @@
+// chimera_multihead.qk —— 量子多头注意力（曲面体多纤维截面版）
+//
+// 对应 Transformer 的 Multi-Head Attention。多头不是「层内并行的线性子空间」，
+// 而是曲面体上不同「纤维截面」（不同几何度量视角）的注意力头：
+//   头 0 = SWAP test 态重叠 |⟨q|k⟩|²（Fubini-Study 度量的投影分量）
+//   头 1 = FS 测地线距离 arccos|⟨q|k⟩|（曲率加权的距离分量）
+//
+// 注：qk 用户函数的 QObject 参数默认 move（消费），「借用」只属于内置函数
+//     （qattention / geodesic_distance）。故本组件接收「几何量（数值）」——
+//     重叠与测地线距离由调用方用内置函数借用计算后传入，多头在数值层组合。
+//
+// 多头从「线性子空间划分」升级为「黎曼几何视角划分」，且头的融合用
+//       Quark 真·玻尔兹曼软门控（自信的头加权更大），而非算术平均。
+
+// 多头注意力：两个几何视角（投影重叠 + 测地线距离）的玻尔兹曼软门控融合
+@layer(time=0, thread=0, coord=(21))
+double multihead_attention(double overlap, double dist) {
+    // 头 1：测地线距离 → 玻尔兹曼相似度 σ(−dist)
+    double dist_sim = boltzmann2(1.0, 0.0, -dist);
+    // 多头玻尔兹曼软门控：自信的头加权更大（非 0.5·(overlap+dist_sim) 算术平均）
+    return boltzmann2(overlap, dist_sim, 1.0);
+}

@@ -1,0 +1,126 @@
+// chimera_xai.qk —— 量子可解释性 XAI
+
+// 量子显著性：多 shot ⟨Z⟩ 尖锐度（越确定越显著）
+@layer(time=0, thread=0, coord=(1290))
+double saliency_quantum(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 概念激活：多 shot CAV（概念向量与样本态重叠）
+@layer(time=0, thread=0, coord=(1291))
+double concept_activation(QObject concept, QObject sample) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(concept, sample);
+        s = s + 1;
+    }
+    int32 _a = concept.measure();
+    int32 _b = sample.measure();
+    return acc / 8.0;
+}
+
+// 归因探针：多 shot 特定 qubit 贡献（⟨Z⟩ 归因）
+@layer(time=0, thread=0, coord=(1292))
+double attribution_probe(QObject state, int32 qubit_idx) {
+    int32 n = qobj_num_qubits(state);
+    if (qubit_idx < 0) { qubit_idx = 0; }
+    if (qubit_idx >= n) { qubit_idx = n - 1; }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, qubit_idx);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 特征重要性：扰动敏感度——翻转 qubit 0 后 ⟨Z⟩ 变化量
+@layer(time=0, thread=0, coord=(1293))
+double feature_importance(QObject state) {
+    double base = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        base = base + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    base = base / 8.0;
+    qgate_x(state, 0);   // 扰动
+    double pert = 0.0;
+    s = 0;
+    while (s < 8) {
+        pert = pert + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    pert = pert / 8.0;
+    double delta = base - pert;
+    if (delta < 0.0) { delta = -delta; }
+    return delta;
+}
+
+// 决策边界：多 shot 两类样本保真度（边界清晰度）
+@layer(time=0, thread=0, coord=(1294))
+double decision_boundary(QObject class_a, QObject class_b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(class_a, class_b);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = class_a.measure();
+    int32 _b = class_b.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 反事实解释：噪声编码态多 shot 期望 + 逆因果增益 → 解释力度
+@layer(time=0, thread=0, coord=(1295))
+double counterfactual_explain(double noise, double theta) {
+    auto state = basis_state(noise * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    double g = retrocausal_ctc_gain(2, theta, 1.0, 1.0);
+    return (g / (g + 40.0)) * (0.5 + acc);
+}
+
+// 量子 SHAP：特征值编码态多 shot 期望 → 玻尔兹曼边际贡献
+@layer(time=0, thread=0, coord=(1296))
+double shap_quantum(double feature_value, double temperature) {
+    auto state = basis_state(feature_value * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}
+
+// 概念向量：布洛赫方向编码概念 + 强度相位
+@layer(time=0, thread=0, coord=(1297))
+QObject concept_vector(double theta, double phi, double strength) {
+    auto state = basis_state(theta, phi, 0);
+    qgate_rz(state, 0, strength);
+    return state;
+}

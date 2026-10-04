@@ -1,0 +1,639 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// chimera_drive.qk —— Chimera 量子智能驾驶超级大模型（全激活 / 万级深度版）
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// 与前一版的关键区别：**去掉 MoE 稀疏门控（route 选 1），改为全激活**。
+// 即：256 个组件在每一帧里全部激活执行，无一被稀疏跳过。
+//
+// 落地三条扩展路径：
+//   1. 深到 100+ 层   —— 4 条分支 × 每分支 29 集群 × 4 周期 = 运行时 116 层深堆叠
+//   2. 每层全量展开   —— 每个范式集群的全部组件（~8 个）在每层里显式调用，不再 route 选 1
+//   3. 多分支并行     —— 意识态拆成 4 条独立量子分支，各走 7~8 个范式集群，最后融合
+//
+// 架构：
+//   ┌──────────────────────────────────────────────────────────────┐
+//   │ ① 64 维参数空间 p00..p63（跨 MMI_INVOKE 持久，构成模型权重）   │
+//   ├──────────────────────────────────────────────────────────────┤
+//   │ ② 输入编码 + 25 现有组件主线（感知/意识/情绪/决策/元认知/逆因果）│
+//   ├──────────────────────────────────────────────────────────────┤
+//   │ ③ 多分支展开：b0(耗散/MIPT/因果/几何/拓扑/QRC/QEC/意识)        │
+//   │              b1(语言/优化/路由/生成/鲁棒/多体/图)              │
+//   │              b2(时序/信号/核/集成/元/连续/XAI)                │
+//   │              b3(神经符号/QAOA/动力/信息论/压缩/聚类/RL)        │
+//   │    每分支 4 周期深度堆叠，每周期全量调用其负责集群的全部组件    │
+//   ├──────────────────────────────────────────────────────────────┤
+//   │ ④ 融合：4 分支信号 + 分支态重叠 → steer                        │
+//   └──────────────────────────────────────────────────────────────┘
+//
+// 输入：drive(lateral, evidence, reward) -> steer
+// 运行：Quark runtime QVM 后端；经 `qk mmi` 打包为 .mmi 供 autopilot.py 调用。
+
+requires quantum.allocate;
+requires quantum.gate;
+requires quantum.measure;
+requires quantum.release;
+
+// ── 态射宏库（morph 元编程：硬编码数值 → 语义态射，需最先 include）──
+include "../src/chimera_morphs.qk";
+
+// ── 现有 25 组件 ──
+include "../src/chimera_perception.qk";
+include "../src/chimera_consciousness.qk";
+include "../src/chimera_decision.qk";
+include "../src/chimera_dream.qk";
+include "../src/chimera_chaos.qk";
+include "../src/chimera_metacognition.qk";
+include "../src/chimera_qrl.qk";
+include "../src/chimera_qcnn.qk";
+include "../src/chimera_world.qk";
+include "../src/chimera_imagine.qk";
+include "../src/chimera_retrocausal.qk";
+include "../src/chimera_positional.qk";
+include "../src/chimera_multihead.qk";
+include "../src/chimera_ffn.qk";
+include "../src/chimera_normalize.qk";
+include "../src/chimera_residual.qk";
+include "../src/chimera_softmax.qk";
+include "../src/chimera_moe.qk";
+include "../src/chimera_memory.qk";
+include "../src/chimera_retrieval.qk";
+include "../src/chimera_loss.qk";
+include "../src/chimera_optimizer.qk";
+include "../src/chimera_lvm.qk";
+include "../src/chimera_fusion.qk";
+include "../src/chimera_suppressor.qk";
+
+// ── 新增 231 组件（29 范式集群）──
+include "../src/chimera_dissipative.qk";
+include "../src/chimera_mipt.qk";
+include "../src/chimera_causality.qk";
+include "../src/chimera_geometry.qk";
+include "../src/chimera_topo_memory.qk";
+include "../src/chimera_reservoir.qk";
+include "../src/chimera_qec.qk";
+include "../src/chimera_metacog_ext.qk";
+include "../src/chimera_language.qk";
+include "../src/chimera_optimizers.qk";
+include "../src/chimera_routing.qk";
+include "../src/chimera_generative.qk";
+include "../src/chimera_robustness.qk";
+include "../src/chimera_manybody.qk";
+include "../src/chimera_rl_ext.qk";
+include "../src/chimera_gnn.qk";
+include "../src/chimera_timeseries.qk";
+include "../src/chimera_qsp.qk";
+include "../src/chimera_kernel.qk";
+include "../src/chimera_ensemble.qk";
+include "../src/chimera_meta.qk";
+include "../src/chimera_continual.qk";
+include "../src/chimera_xai.qk";
+include "../src/chimera_neurosymbolic.qk";
+include "../src/chimera_qaoa.qk";
+include "../src/chimera_dynamics.qk";
+include "../src/chimera_infotheory.qk";
+include "../src/chimera_autoencoder.qk";
+include "../src/chimera_clustering.qk";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ① 参数注册表：64 维可学习状态
+//    p00..p31：4 分支 × 4 周期 × 2 维（相位 θ + 噪声 n）
+//    p32..p47：4 分支 × 4 周期的「温度/正则」参数
+//    p48..p63：全局可学习状态（漂移步长、QRL θ、情绪阈值、记忆、抑制、融合权重等）
+// ═══════════════════════════════════════════════════════════════════════════════
+double p00 = 0.5; double p01 = 0.2; double p02 = 0.6; double p03 = 0.15;
+double p04 = 0.4; double p05 = 0.25; double p06 = 0.7; double p07 = 0.18;
+double p08 = 0.5; double p09 = 0.3; double p10 = 0.6; double p11 = 0.2;
+double p12 = 0.45; double p13 = 0.28; double p14 = 0.65; double p15 = 0.22;
+double p16 = 0.5; double p17 = 0.32; double p18 = 0.55; double p19 = 0.2;
+double p20 = 0.48; double p21 = 0.26; double p22 = 0.62; double p23 = 0.24;
+double p24 = 0.5; double p25 = 0.3; double p26 = 0.58; double p27 = 0.21;
+double p28 = 0.52; double p29 = 0.28; double p30 = 0.6; double p31 = 0.24;
+double p32 = 0.5; double p33 = 0.2; double p34 = 0.55; double p35 = 0.25;
+double p36 = 0.6; double p37 = 0.22; double p38 = 0.5; double p39 = 0.28;
+double p40 = 0.58; double p41 = 0.24; double p42 = 0.52; double p43 = 0.26;
+double p44 = 0.6; double p45 = 0.2; double p46 = 0.54; double p47 = 0.3;
+double p48 = 0.5; double p49 = 0.5; double p50 = 0.5; double p51 = 0.5;
+double p52 = 0.6; double p53 = 0.5; double p54 = 0.5; double p55 = 1.5;
+double p56 = 0.6; double p57 = 0.5; double p58 = 0.3; double p59 = 0.4;
+double p60 = 0.5; double p61 = 0.2; double p62 = 0.15; double p63 = 0.1;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 通用深度预处理块：每个范式层之前，先做 意识漂移→FFN→耗散→MIPT 的通用变换。
+// 让「每层」都包含统一的非线性动力学，再叠加该层的专属范式组件。
+// ═══════════════════════════════════════════════════════════════════════════════
+@layer(time=0, thread=0, coord=(1400))
+QObject deep_preprocess(QObject state, double theta, double noise) {
+    int32 k = 0;
+    while (k < 2) {
+        state = chaos_drift(state, 0.6 * (theta + 0.5));
+        k = k + 1;
+    }
+    state = ffn_step(state, theta);
+    state = dissipative_gate(state, noise, 1);
+    state = mipt_drive(state, 0.6, 2, 2);
+    return state;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 探测态工厂：创建一个带特征编码的临时量子态（用于需要双 QObject 的度量组件）。
+// ═══════════════════════════════════════════════════════════════════════════════
+@layer(time=0, thread=0, coord=(1401))
+QObject make_probe(double x) {
+    auto q = new QuantumRegister(2);
+    qgate_h(q, 0);
+    qgate_rz(q, 0, x * PI!());
+    qgate_h(q, 1);
+    qgate_rz(q, 1, (x + 1.0) * HALF_PI!());
+    qgate_cnot(q, 0, 1);
+    return q;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 主入口：全激活深度超级大模型。
+// ═══════════════════════════════════════════════════════════════════════════════
+export double drive(double lateral, double evidence, double reward) {
+
+    // ═══════════ ② 输入编码 + 25 现有组件主线 ═══════════
+    auto percept = perceive_value((lateral + 1.0) / 2.0, evidence * PI!());
+    double clarity = qexpect_z(percept, 0);
+    if (clarity < 0.0) { clarity = -clarity; }
+    int32 _perc = qmeasure(percept, 0);
+
+    auto consciousness = new QuantumRegister(2);
+    int32 s = 0;
+    while (s < 6) {
+        consciousness = chaos_drift(consciousness, p52);
+        s = s + 1;
+    }
+    EmotionReading reading = measure_emotion(consciousness);
+    int32 emo = reading.state;
+    consciousness = reading.consciousness;
+    double emo_float = emo * 1.0;
+    double emo_supp = suppress_emotion(emo_float, p55, p56);
+    p55 = emo_supp;
+
+    consciousness = qcnn_conv(consciousness, p53);
+    auto perception2 = new QuantumRegister(2);
+    qgate_h(perception2, 0);
+    qgate_rz(perception2, 0, evidence * PI!());
+    qgate_h(perception2, 1);
+    qgate_rz(perception2, 1, (lateral + 1.0) * HALF_PI!());
+    qgate_cnot(perception2, 0, 1);
+    double attention = qattention(perception2, consciousness);
+    double temporal = attention;
+
+    auto dream_left = world_state(2);
+    dream_left = imagine_trajectory(dream_left, 0, 4, p52);
+    double q_left = trajectory_quality(dream_left);
+    auto dream_right = world_state(2);
+    dream_right = imagine_trajectory(dream_right, 2, 4, p52);
+    double q_right = trajectory_quality(dream_right);
+    int32 best = grpo_select(q_left, q_right);
+
+    EmotionPolicy policy = init_policy();
+    policy.threshold0 = p48;
+    policy.threshold1 = p49;
+    policy.threshold2 = p50;
+    policy.threshold3 = p51;
+    int32 decision = decide(policy, emo, evidence);
+
+    double value = qexpect_z(consciousness, 0);
+    p53 = qrl_update(p53, reward, value);
+    auto predicted = basis_state(evidence * PI!(), 0.0, 0);
+    auto actual = basis_state(0.5 * PI!(), 0.0, 0);
+    ErrorReading err = recognize_error(predicted, actual);
+    policy = reflect_and_learn(policy, emo, err, reward);
+    p48 = policy.threshold0;
+    p49 = policy.threshold1;
+    p50 = policy.threshold2;
+    p51 = policy.threshold3;
+
+    p52 = improve_drift(p52, 0.5, 0);
+    double richness = chaos_richness(p52, 6);
+    consciousness = positional_encode(consciousness, richness, 0.5);
+    double gdist = geodesic_distance(perception2, consciousness);
+    double mhatt = multihead_attention(attention, gdist);
+    consciousness = ffn_step(consciousness, p53);
+    double nw = normalize_weight(evidence);
+    double d_res = geodesic_distance(consciousness, perception2);
+    consciousness = residual_step(consciousness, d_res, 0.2);
+    double sw = softmax_weight(evidence, 0.5);
+    double moe = moe_mix(evidence, p53);
+    p54 = memory_update(p54, evidence, 0.3);
+    double recall = memory_recall(p54, evidence);
+    double retr = retrieval_score(evidence, 0.5);
+    double loss = geodesic_loss(evidence, 0.5);
+    double opt = optimize_step(loss, p53, 0.9);
+    double safety = retrocausal_safety(evidence, lateral);
+    double danger = retrocausal_danger(lateral);
+
+    // 消费主意识态（之后改用 4 分支态做深度堆叠）
+    int32 _c0 = qmeasure(consciousness, 0);
+    int32 _c1 = qmeasure(consciousness, 1);
+
+    // ═══════════ ③ 多分支展开：4 条独立量子分支 ═══════════
+    auto b0 = new QuantumRegister(2);
+    auto b1 = new QuantumRegister(2);
+    auto b2 = new QuantumRegister(2);
+    auto b3 = new QuantumRegister(2);
+    int32 w0 = 0;
+    while (w0 < 3) {
+        b0 = chaos_drift(b0, p52);
+        b1 = chaos_drift(b1, p52 + 0.1);
+        b2 = chaos_drift(b2, p52 + 0.2);
+        b3 = chaos_drift(b3, p52 + 0.3);
+        w0 = w0 + 1;
+    }
+
+    double sig0 = 0.0;
+    double sig1 = 0.0;
+    double sig2 = 0.0;
+    double sig3 = 0.0;
+
+    // ═══════════ ③ 深度堆叠：4 周期 × 4 分支全量 ═══════════
+    // 每周期 = 4 分支各走其负责的 7~8 个范式集群，每集群全量调用全部组件。
+    // 4 周期运行时深 116 层（4 分支 × 29 集群），256 组件每周期全激活。
+    int32 cycle = 0;
+    while (cycle < 4) {
+        double w = cycle * 0.05;       // 周期相位偏移（参数随周期变化，无硬编码）
+
+        // ───────── 分支 0：耗散 / MIPT / 因果 / 几何 / 拓扑 / QRC / QEC / 意识 ─────────
+        if (1) {
+            double th = p00 + w;
+            double ns = p01 + w;
+            b0 = deep_preprocess(b0, th, ns);
+
+            // 集群 0 耗散
+            b0 = dissipative_gate(b0, ns, 1);
+            b0 = amplitude_damping_layer(b0, ns * 0.5);
+            sig0 = sig0 + dephasing_attention(evidence, ns);
+            b0 = depolarizing_dropout(b0, ns * 0.3);
+            b0 = kraus_step(b0, ns, 0.5);
+            sig0 = sig0 + dissipation_rate_opt(ns, 1, 0.3);
+            b0 = noisy_residual(b0, 0.5, ns);
+            sig0 = sig0 + engineered_noise_router(evidence, 0.5 + w);
+
+            // 集群 1 MIPT
+            b0 = mipt_drive(b0, 0.6, 2, 2);
+            sig0 = sig0 + measurement_entropy_flow(0.6, 2, sig0);
+            sig0 = sig0 + entanglement_transition_probe(b0);
+            sig0 = sig0 + monitor_rate_scheduler(0.4, sig0, 0.5);
+            sig0 = sig0 + area_law_estimator(b0, 2.0, 2.0);
+            sig0 = sig0 + teleportation_entropy(b0, perception2);
+            b0 = midcircuit_reset(b0, 1);
+            sig0 = sig0 + phase_transition_detector(0.6, 2);
+            sig0 = sig0 + sample_entropy(0.6, 2);
+
+            // 集群 2 因果
+            b0 = counterfactual_gate(b0, ns, th);
+            sig0 = sig0 + pseudo_density_matrix(b0, perception2);
+            sig0 = sig0 + quantum_do_calculus(ns, th);
+            sig0 = sig0 + temporal_nonlocal_corr(ns, th);
+            sig0 = sig0 + ctc_resolve(th, 0.5, ns);
+            sig0 = sig0 + retrocausal_policy_grad(reward, ns);
+            sig0 = sig0 + granger_quantum(ns, th);
+            sig0 = sig0 + causal_entropy(b0, perception2);
+
+            // 集群 3 几何
+            b0 = berry_phase_layer(b0, th, 2);
+            sig0 = sig0 + berry_curvature_field(th, 0.1, 0.05, 0.05);
+            sig0 = sig0 + fubini_study_metric(b0, perception2);
+            b0 = geodesic_transport(b0, 0.2);
+            sig0 = sig0 + natural_gradient_step(th, opt, 0.5);
+            sig0 = sig0 + quantum_metric_tensor(b0, perception2, 0.1);
+            b0 = holonomy_loop(b0, th);
+            b0 = symplectic_flow(b0, 0.6);
+            sig0 = sig0 + curvature_regularizer(evidence);
+
+            // 集群 4 拓扑记忆
+            b0 = anyon_braid_memory(b0, 2);
+            sig0 = sig0 + topological_order_probe(b0);
+            b0 = toric_code_memory(b0, th);
+            b0 = surface_code_encode(b0, th);
+            b0 = entanglement_holonomy(b0, th, 2);
+            sig0 = sig0 + knotted_memory(b0, perception2);
+            b0 = braid_group_router(b0, 1);
+            sig0 = sig0 + topological_charge(b0);
+
+            // 集群 5 QRC
+            b0 = otoc_scrambler(b0, 2);
+            sig0 = sig0 + edge_of_chaos_search(p52, 3, 0.5);
+            sig0 = sig0 + quantum_lyapunov(b0, perception2);
+            sig0 = sig0 + echo_state_probe(b0, perception2);
+            sig0 = sig0 + spectral_radius_tune(0.5, 4.0);
+            sig0 = sig0 + nonlinear_readout(b0, 0.5);
+            sig0 = sig0 + multi_reservoir_ensemble(sig0, sig1, sig2);
+            sig0 = sig0 + reservoir_entropy(0.6, 3);
+            auto res_tmp = reservoir_temporal("traffic", 2, 2);
+            sig0 = sig0 + nonlinear_readout(res_tmp, 0.5);
+            int32 _rt0 = qmeasure(res_tmp, 0);
+            int32 _rt1 = qmeasure(res_tmp, 1);
+
+            // 集群 6 QEC
+            b0 = syndrome_extractor(b0, 1);
+            sig0 = sig0 + error_mitigation_readout(value, 0.2, 0.1);
+            b0 = surface_code_syndrome(b0, th);
+            b0 = fault_tolerant_gate(b0, th);
+            sig0 = sig0 + code_distance_probe("X,Z", 2);
+            b0 = magic_state_distill(b0, 1);
+            sig0 = sig0 + adaptive_decoder(sig0, 0.5);
+            auto logical_q = logical_qubit_state(2);
+            sig0 = sig0 + topological_order_probe(logical_q);
+            int32 _lq0 = qmeasure(logical_q, 0);
+            int32 _lq1 = qmeasure(logical_q, 1);
+
+            // 集群 7 意识扩展
+            sig0 = sig0 + self_referential_loop(b0, perception2);
+            sig0 = sig0 + qualia_entropy(th, p52, 3);
+            b0 = attentional_spotlight(b0, 0);
+            sig0 = sig0 + uncertainty_pause(clarity);
+            sig0 = sig0 + confidence_gated_update(opt, clarity, 0.1);
+            b0 = doubt_state(b0, ns);
+            sig0 = sig0 + introspective_probe(b0);
+            sig0 = sig0 + free_energy_minimizer(loss, richness, 0.5);
+        }
+
+        // ───────── 分支 1：语言 / 优化器 / 路由 / 生成 / 鲁棒 / 多体 / 图 ─────────
+        if (1) {
+            double th = p02 + w;
+            double ns = p03 + w;
+            b1 = deep_preprocess(b1, th, ns);
+
+            // 集群 8 语言
+            b1 = quantum_word_embedding("lane", th);
+            sig1 = sig1 + semantic_interference(b1, perception2);
+            ConceptPair pair = conceptual_entanglement(b1, perception2);
+            b1 = pair.a;
+            b1 = discourse_holography("traffic", th);
+            b1 = negation_operator(b1);
+            b1 = ambiguity_superposition(b1, ns);
+            sig1 = sig1 + entailment_fidelity(b1, perception2);
+            b1 = compositionality_gate(b1, th);
+
+            // 集群 9 优化器
+            sig1 = sig1 + quantum_adam(opt, value, 0.9);
+            sig1 = sig1 + qng_adagrad(opt, 0.5, sig1);
+            sig1 = sig1 + spectral_optimizer(opt, 0.5);
+            b1 = imaginary_time_evolution(b1, 0.2);
+            sig1 = sig1 + variational_eigensolver(b1);
+            sig1 = sig1 + adiabatic_schedule(0.5, 1.0, 0.6);
+            b1 = quantum_anneal_step(b1, 0.5, 0.3);
+            sig1 = sig1 + gradient_clip_metric(opt, 0.5, 1.0);
+
+            // 集群 10 路由
+            b1 = quantum_router(b1, th);
+            b1 = superposition_routing(b1, th);
+            sig1 = sig1 + interference_gating(b1, perception2);
+            sig1 = sig1 + phase_attention(b1, perception2, th);
+            sig1 = sig1 + entanglement_gating(b1);
+            b1 = quantum_topk(b1, 2);
+            sig1 = sig1 + boltzmann_router(evidence, 0.5 + w);
+            sig1 = sig1 + hierarchical_attention(evidence, attention, temporal, 1.0);
+
+            // 集群 11 生成
+            b1 = quantum_diffusion_step(b1, ns);
+            sig1 = sig1 + quantum_gan_discriminator(b1, perception2);
+            b1 = generative_amplitude_flow(b1, th);
+            b1 = dream_counterfactual(b1, 0.2);
+            b1 = world_model_predict(b1, 0.5, p52);
+            b1 = latent_space_walk(b1, 0.5);
+            int32 samp = quantum_sampling(b1, 0);
+
+            // 集群 12 鲁棒
+            b1 = adversarial_quantum(b1, 0.1);
+            b1 = quantum_dp_noise(b1, 0.3);
+            sig1 = sig1 + certified_robustness(b1, perception2);
+            sig1 = sig1 + federated_quantum_avg(p53, opt, 0.5);
+            b1 = quantum_homomorphic(b1, th);
+            sig1 = sig1 + shadow_tomography(b1, 4);
+            sig1 = sig1 + quantum_gradient_estimator(b1, perception2);
+
+            // 集群 13 多体
+            b1 = spin_glass_state(b1, ns);
+            b1 = mbl_localization(b1, ns);
+            sig1 = sig1 + entanglement_spectrum(b1);
+            sig1 = sig1 + order_parameter(b1);
+            sig1 = sig1 + correlation_length(b1, perception2);
+            sig1 = sig1 + replica_overlap(b1, perception2);
+            sig1 = sig1 + quantum_phase_diagram(b1, th);
+            sig1 = sig1 + thermalization_probe(0.5);
+
+            // 集群 14 图网络
+            b1 = graph_state_encode(b1, th);
+            b1 = message_passing(b1, 2);
+            sig1 = sig1 + node_aggregation(b1);
+            sig1 = sig1 + edge_attention(b1, perception2);
+            b1 = graph_pooling(b1);
+            sig1 = sig1 + graph_kernel(b1, perception2);
+            sig1 = sig1 + community_detection(b1);
+            b1 = node_embedding(th, 0.1, evidence);
+        }
+
+        // ───────── 分支 2：时序 / 信号 / 核 / 集成 / 元 / 连续 / XAI ─────────
+        if (1) {
+            double th = p04 + w;
+            double ns = p05 + w;
+            b2 = deep_preprocess(b2, th, ns);
+
+            // 集群 15 时序
+            sig2 = sig2 + recurrence_probe(b2, perception2);
+            b2 = spectral_density(b2, 0.5);
+            sig2 = sig2 + anomaly_score(b2, perception2);
+            sig2 = sig2 + trend_extract(b2);
+            b2 = seasonality_phase(b2, 1.0);
+            sig2 = sig2 + kalman_quantum(lateral, evidence, 0.5, 0.5);
+            b2 = delay_embedding(b2, 0.2);
+            auto fc_tmp = quantum_forecast("lane", 2, 2);
+            sig2 = sig2 + trend_extract(fc_tmp);
+            int32 _fc0 = qmeasure(fc_tmp, 0);
+            int32 _fc1 = qmeasure(fc_tmp, 1);
+
+            // 集群 16 信号处理
+            b2 = qsp_polynomial(b2, th);
+            b2 = qsvt_block(b2, th);
+            b2 = signal_phase_est(b2, th);
+            b2 = amplitude_transform(b2);
+            sig2 = sig2 + chebyshev_poly(evidence, 1.0, 0.5);
+            b2 = filter_design(b2, 0.5);
+            b2 = qft_window(b2, 0.5);
+            sig2 = sig2 + spectral_filter(b2);
+
+            // 集群 17 核方法
+            sig2 = sig2 + fidelity_kernel(b2, perception2);
+            sig2 = sig2 + projected_kernel(b2, perception2);
+            sig2 = sig2 + kernel_ridge(evidence, 1.0);
+            sig2 = sig2 + svm_quantum(b2, perception2);
+            sig2 = sig2 + kernel_alignment(b2, perception2);
+            b2 = nystrom_approx(b2, 1);
+            sig2 = sig2 + fisher_kernel(b2);
+            sig2 = sig2 + kernel_pca(b2);
+
+            // 集群 18 集成
+            b2 = bagging_quantum(b2, th);
+            sig2 = sig2 + boosting_quantum(loss, 0.5);
+            sig2 = sig2 + stacking_quantum(sig2, sig0);
+            sig2 = sig2 + ensemble_diversity(b2, perception2);
+            sig2 = sig2 + weighted_vote(evidence, 0.5 + w);
+            b2 = dropout_ensemble(b2, 0.2);
+            b2 = bootstrap_qstate(b2, th);
+            sig2 = sig2 + model_committee(evidence, attention);
+
+            // 集群 19 元迁移
+            sig2 = sig2 + maml_quantum(th, opt, value, 0.05, 0.05);
+            sig2 = sig2 + meta_init(th, 0.1);
+            b2 = transfer_feature(b2, 0.1);
+            sig2 = sig2 + domain_adapt(b2, perception2);
+            b2 = few_shot_encode("lane", th);
+            sig2 = sig2 + learning_to_learn(opt, 0.5);
+            b2 = hypernetwork(b2, 0.3);
+            b2 = task_embedding(th, 0.1, 0.0);
+
+            // 集群 20 连续学习
+            sig2 = sig2 + forgetting_probe(b2, perception2);
+            sig2 = sig2 + ewc_quantum(opt, 0.5, 0.1);
+            b2 = synaptic_consolidation(b2, 0.3);
+            sig2 = sig2 + task_gate(evidence, 0.5);
+            sig2 = sig2 + elastic_weight(th, 0.5, 0.1);
+            sig2 = sig2 + knowledge_distill(b2, perception2);
+            sig2 = sig2 + plasticity_stability(opt, value, 0.5);
+            auto mr_tmp = memory_replay("lane", 2, 2);
+            sig2 = sig2 + forgetting_probe(mr_tmp, b2);
+            int32 _mr0 = qmeasure(mr_tmp, 0);
+            int32 _mr1 = qmeasure(mr_tmp, 1);
+
+            // 集群 21 XAI
+            sig2 = sig2 + saliency_quantum(b2);
+            sig2 = sig2 + concept_activation(b2, perception2);
+            sig2 = sig2 + attribution_probe(b2, 0);
+            sig2 = sig2 + feature_importance(b2);
+            sig2 = sig2 + decision_boundary(b2, perception2);
+            sig2 = sig2 + counterfactual_explain(ns, th);
+            sig2 = sig2 + shap_quantum(evidence, 0.5);
+            b2 = concept_vector(th, 0.1, ns);
+        }
+
+        // ───────── 分支 3：神经符号 / QAOA / 动力 / 信息论 / 压缩 / 聚类 / RL ─────────
+        if (1) {
+            double th = p06 + w;
+            double ns = p07 + w;
+            b3 = deep_preprocess(b3, th, ns);
+
+            // 集群 22 神经符号
+            sig3 = sig3 + logic_tensor(evidence, attention);
+            b3 = rule_injection(b3, ns);
+            b3 = symbolic_gate(b3);
+            sig3 = sig3 + tconorm_combine(evidence, attention);
+            sig3 = sig3 + knowledge_distill_sym(b3, perception2);
+            sig3 = sig3 + entailment_rule(evidence, attention);
+            sig3 = sig3 + fuzzy_logic_layer(evidence, attention);
+            sig3 = sig3 + constraint_satisfy(0.5, 0.1);
+
+            // 集群 23 QAOA
+            b3 = grover_amplify(b3, 2);
+            b3 = qaoa_layer(b3, 0.3, 0.2);
+            sig3 = sig3 + maxcut_energy(b3);
+            b3 = mixing_hamiltonian(b3, 0.2);
+            sig3 = sig3 + cost_landscape(b3);
+            b3 = adiabatic_qaoa(b3, 0.5, 1.0);
+            sig3 = sig3 + constraint_penalty(loss, 0.1);
+            sig3 = sig3 + solution_diversity(b3);
+
+            // 集群 24 动力系统
+            b3 = koopman_operator(b3, p52);
+            b3 = hamiltonian_flow(b3, p52);
+            sig3 = sig3 + lyapunov_spectrum(b3, perception2);
+            b3 = attractor_embed(b3, th);
+            sig3 = sig3 + bifurcation_probe(0.4, 0.5);
+            sig3 = sig3 + fixed_point_finder(0.5, opt, 0.1);
+            b3 = poincare_section(b3, th);
+            sig3 = sig3 + limit_cycle(b3, perception2);
+
+            // 集群 25 信息论
+            sig3 = sig3 + mutual_information(0.5, 0.5, 0.4);
+            sig3 = sig3 + quantum_capacity(ns);
+            sig3 = sig3 + relative_entropy(b3, perception2);
+            sig3 = sig3 + channel_capacity(ns);
+            sig3 = sig3 + data_processing(0.5, 0.4);
+            sig3 = sig3 + quantum_cramerrao(b3);
+            sig3 = sig3 + fisher_information(b3);
+            sig3 = sig3 + entanglement_cost(b3);
+
+            // 集群 26 压缩自编码
+            b3 = quantum_autoencoder(b3, th);
+            b3 = amplitude_compress(b3, 0.2);
+            b3 = lossy_encoding(b3);
+            b3 = denoising_quantum(b3, ns);
+            b3 = bottleneck_state(b3, 1);
+            sig3 = sig3 + variational_encoder(b3);
+            sig3 = sig3 + latent_disentangle(b3);
+            sig3 = sig3 + rate_distortion(b3, perception2);
+
+            // 集群 27 聚类
+            sig3 = sig3 + quantum_kmeans(b3, perception2);
+            sig3 = sig3 + distance_matrix(b3, perception2);
+            sig3 = sig3 + centroid_update(b3);
+            sig3 = sig3 + quantum_dbscan(b3, perception2);
+            sig3 = sig3 + anomaly_detect(b3, perception2);
+            sig3 = sig3 + novelty_score(b3, perception2);
+            sig3 = sig3 + spectral_cluster(b3);
+            sig3 = sig3 + gmm_quantum(evidence, 0.5);
+
+            // 集群 28 RL 扩展
+            sig3 = sig3 + actor_critic_q(b3);
+            sig3 = sig3 + q_learning_update(value, reward, value, 0.05, 0.9);
+            sig3 = sig3 + td_lambda(reward, value, value, 0.9, 0.9);
+            sig3 = sig3 + eligibility_trace(0.9, 0.9, 0.9);
+            sig3 = sig3 + policy_entropy_reg(th, p52, 3, 0.5);
+            sig3 = sig3 + intrinsic_motivation(b3, perception2);
+            sig3 = sig3 + exploration_bonus(b3, perception2);
+            sig3 = sig3 + prioritized_replay(0.3, 0.5);
+        }
+
+        cycle = cycle + 1;
+    }
+
+    // ═══════════ ④ 融合：4 分支信号 + 分支态重叠 ═══════════
+    double total_sig = sig0 + sig1 + sig2 + sig3;
+    double branch_overlap01 = qattention(b0, b1);
+    double branch_overlap23 = qattention(b2, b3);
+    double branch_overlap = 0.5 * branch_overlap01 + 0.5 * branch_overlap23;
+    double branch_entropy = qstate_entropy(b0);
+    if (branch_entropy < 0.0) { branch_entropy = 0.0; }
+
+    // 消费 4 分支态（QLT 线性类型）
+    int32 _b00 = qmeasure(b0, 0);
+    int32 _b01 = qmeasure(b0, 1);
+    int32 _b10 = qmeasure(b1, 0);
+    int32 _b11 = qmeasure(b1, 1);
+    int32 _b20 = qmeasure(b2, 0);
+    int32 _b21 = qmeasure(b2, 1);
+    int32 _b30 = qmeasure(b3, 0);
+    int32 _b31 = qmeasure(b3, 1);
+    int32 _p20 = qmeasure(perception2, 0);
+    int32 _p21 = qmeasure(perception2, 1);
+
+    // ═══════════ ⑤ 决策输出头 ═══════════
+    double emo_gain = 0.85 + 0.05 * emo_supp;
+    double resonance = 0.85 + 0.3 * attention;
+    double action_bias = 0.0;
+    if (best == 0) { action_bias = -0.15; }
+    if (best == 1) { action_bias = 0.15; }
+    double safety_gain = 0.75 + 0.5 * safety;
+    double cognitive = 0.5 * attention + 0.3 * temporal + 0.2 * mhatt;
+    double geometric = 0.4 * nw + 0.3 * sw + 0.3 * moe;
+    double causal = safety;
+    double memory_ = 0.5 * recall + 0.3 * retr + 0.2 * opt;
+    double fused = fusion_gain(cognitive, geometric, causal, memory_);
+    double squash = fusion_squash(fused);
+    double sig_norm = tanh_quantize(total_sig * 0.01, 1.0, 8);
+    double branch_term = 0.5 + 0.3 * branch_overlap + 0.2 * branch_entropy;
+    double K = 1.2 * (0.7 + 0.6 * p53) * resonance * emo_gain * safety_gain * squash * branch_term * (0.9 + 0.2 * sig_norm);
+    double steer = -K * lateral + action_bias * (1.0 + danger);
+    if (steer > 1.0)  { steer = 1.0; }
+    if (steer < -1.0) { steer = -1.0; }
+
+    if (reward < -0.8) {
+        return 2.0;
+    }
+    return steer;
+}

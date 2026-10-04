@@ -1,0 +1,122 @@
+// chimera_qsp.qk —— 量子信号处理 QSP/QSVT
+
+// ① QSP 多项式：相位序列编码多项式变换
+@layer(time=0, thread=0, coord=(1240))
+QObject qsp_polynomial(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// ② QSVT 块编码：信号酉的块编码（CNOT 纠缠 + 相位）
+@layer(time=0, thread=0, coord=(1241))
+QObject qsvt_block(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    return state;
+}
+
+// ③ 信号相位估计：H + 测量 → 相位估计（信号频率）
+@layer(time=0, thread=0, coord=(1242))
+QObject signal_phase_est(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta);
+        i = i + 1;
+    }
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// ④ 振幅变换：H 门变换振幅 + 环形纠缠 + tanh 非线性（频域 ↔ 时域）
+@layer(time=0, thread=0, coord=(1243))
+QObject amplitude_transform(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// ⑤ Chebyshev 多项式逼近：相邻项编码态重叠加权的递推 T_{n+1}=2xT_n−T_{n-1}
+@layer(time=0, thread=0, coord=(1244))
+double chebyshev_poly(double x, double t_n, double t_nm1) {
+    auto s_n = basis_state(t_n * PI!(), 0.0, 0);
+    auto s_nm1 = basis_state(t_nm1 * PI!(), 0.0, 0);
+    double overlap = qattention(s_n, s_nm1);
+    int32 _a = s_n.measure();
+    int32 _b = s_nm1.measure();
+    return (2.0 * x * t_n - t_nm1) * (0.5 + overlap);
+}
+
+// ⑥ 量子滤波器设计：频域掩码（相位滤波 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1245))
+QObject filter_design(QObject state, double cutoff) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, cutoff * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// ⑦ QFT 加窗：窗口函数（H + Rz 加窗）
+@layer(time=0, thread=0, coord=(1246))
+QObject qft_window(QObject state, double window_width) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, window_width * i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// ⑧ 谱滤波：多 shot 频域掩码期望
+@layer(time=0, thread=0, coord=(1247))
+double spectral_filter(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}

@@ -3,8 +3,8 @@
 // 判断「前提 premise」与「假设 hypothesis」的语义关系（NLI 三分类）：
 //   蕴含 entailment（重叠高）/ 矛盾 contradiction（重叠低）/ 中性 neutral。
 // 用 encode_amplitudes 做 3-qubit 字符 n-gram 量子指纹，qattention 度量两句话的
-// 指纹态重叠；情绪策略（EmotionPolicy）调制判定边界；例行学习走 mode==0（reward
-// 规则，避免多 qubit 感知态与单 qubit 判定态的维度不匹配）；元认知核认识错误并反思。
+// 指纹态重叠；情绪策略（EmotionPolicy）调制判定边界；例行学习走 mode==1（完整 QGT，
+// 判定态 decision_state 已对齐感知态维度）；元认知核认识错误并反思。
 //
 // 样本集：9 对 NLI 句对（3 蕴含 + 3 矛盾 + 3 中性），替代原先 3 对硬编码句对。
 // 注意：这是「字符 n-gram 量子指纹」匹配（量子最近邻），不是深度语义理解；
@@ -85,14 +85,14 @@ int32 quark_main() {
         }
         total = total + 1;
 
-        // ── ④ 反思（例行）：mode==0 reward 规则 ──
+        // ── ④ 反思（例行）：mode==1 完整 QGT 自然梯度（判定态对齐感知态维度）──
         double reward = 0.0;
         if (verdict == truth) {
             reward = 1.0;
         } else {
             reward = -1.0;
         }
-        policy = learn_emotion_policy(policy, emo, reward, p, 0);
+        policy = learn_emotion_policy(policy, emo, reward, p, 1);
 
         // ── ⑥ 元认知：认识错误 → 反思学习 ──
         double v_angle = 0.5;
@@ -122,7 +122,7 @@ int32 quark_main() {
         if (policy.threshold3 < 0.5) { policy.threshold3 = 0.5; }
         if (policy.threshold3 > 0.95) { policy.threshold3 = 0.95; }
 
-        // ── 消费量子对象（p 已由 learn_emotion_policy mode==0 归还）──
+        // ── 消费量子对象（QLT 线性类型）──
         int32 _c0 = qmeasure(consciousness, 0);
         int32 _c1 = qmeasure(consciousness, 1);
         int32 _h0 = h.measure();

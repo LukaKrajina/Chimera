@@ -1,0 +1,118 @@
+// chimera_optimizers.qk —— 量子优化器族
+
+// 量子 Adam：曲率调制的动量 + 二阶矩（曲率 = 度规作二阶统计）
+@layer(time=0, thread=0, coord=(1090))
+double quantum_adam(double grad, double momentum, double beta) {
+    double m = beta * momentum + (1.0 - beta) * grad;
+    double g = hyperbolic_metric(grad);
+    if (g > 100.0) { g = 100.0; }
+    double m_hat = m / (1.0 - beta * beta);
+    double lr = 1.0 / (1.0 + g);
+    return lr * m_hat;
+}
+
+// QNG AdaGrad：自然梯度 + 累积二阶矩（牛顿法求 sqrt）
+@layer(time=0, thread=0, coord=(1091))
+double qng_adagrad(double grad, double metric, double accum) {
+    double g = metric;
+    if (g < 0.000001) { g = 0.000001; }
+    double denom = accum + grad * grad;
+    double s = denom;
+    double x = 1.0;
+    int32 k = 0;
+    while (k < 10) {
+        x = 0.5 * (x + s / x);
+        k = k + 1;
+    }
+    return (grad / g) / (x + 0.000001);
+}
+
+// 谱优化器：谱隙调制步长，梯度经态制备 + 多 shot 期望读出
+@layer(time=0, thread=0, coord=(1092))
+double spectral_optimizer(double grad, double gap) {
+    if (gap < 0.0) { gap = 0.0; }
+    auto state = basis_state(grad * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    double lr = gap / (gap + 0.1);
+    return lr * acc;
+}
+
+// 虚时演化 ITE：非酉投影逼近基态（Rz 相位 + 部分坍缩）
+@layer(time=0, thread=0, coord=(1093))
+QObject imaginary_time_evolution(QObject state, double tau) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, tau);
+        i = i + 1;
+    }
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// VQE 优化：多 shot 能量期望 ⟨Z⟩
+@layer(time=0, thread=0, coord=(1094))
+double variational_eigensolver(QObject ansatz) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(ansatz, 0);
+        s = s + 1;
+    }
+    int32 _ = ansatz.measure();
+    return acc / 8.0;
+}
+
+// 绝热调度：调度参数编码态多 shot 期望 → 慢演化强度
+@layer(time=0, thread=0, coord=(1095))
+double adiabatic_schedule(double t, double total_time, double final_strength) {
+    double s = t / total_time;
+    if (s > 1.0) { s = 1.0; }
+    auto state = basis_state(s * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 i = 0;
+    while (i < 8) {
+        acc = acc + qexpect_z(state, 0);
+        i = i + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return acc * final_strength;
+}
+
+// 量子退火步：横向场 H + 纵向场 Rz（隧穿逃逸局部极值）
+@layer(time=0, thread=0, coord=(1096))
+QObject quantum_anneal_step(QObject state, double transverse, double longitudinal) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, transverse);
+        qgate_h(state, i);
+        qgate_rz(state, i, longitudinal);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 度量梯度裁剪：梯度编码态多 shot 期望 → FS 范数软裁剪
+@layer(time=0, thread=0, coord=(1097))
+double gradient_clip_metric(double grad, double metric, double clip) {
+    auto state = basis_state(grad * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    double scale = metric / (metric + clip);
+    return acc * scale;
+}

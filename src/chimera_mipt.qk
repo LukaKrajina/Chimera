@@ -1,0 +1,158 @@
+// chimera_mipt.qk —— 测量诱导相变引擎
+
+// MIPT 相变驱动：酉漂移 + 测量交替（measure_every 控制测量率）
+@layer(time=0, thread=0, coord=(1010))
+QObject mipt_drive(QObject state, double dt, int32 steps, int32 measure_every) {
+    int32 k = 0;
+    int32 cnt = 0;
+    while (k < steps) {
+        int32 n = qobj_num_qubits(state);
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            qgate_rz(state, i, dt * (GOLDEN_RATIO!() + 0.1 * i));
+            i = i + 1;
+        }
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(state, j, j + 1);
+            j = j + 1;
+        }
+        if (measure_every > 0) {
+            if (cnt >= measure_every) {
+                int32 _ = qmeasure(state, 0);
+                cnt = 0;
+            }
+            cnt = cnt + 1;
+        }
+        k = k + 1;
+    }
+    return state;
+}
+
+// 测量熵流：漂移+测量多 shot 估计当前熵，返回与历史熵的流速率
+@layer(time=0, thread=0, coord=(1011))
+double measurement_entropy_flow(double dt, int32 steps, double s_prev) {
+    double s_now = sample_entropy(dt, steps);
+    double flow = s_now - s_prev;
+    if (flow < 0.0) { flow = -flow; }
+    return flow;
+}
+
+// 纠缠相变探针：二分切面的跨切关联 ⟨Z_{cut-1} Z_{cut}⟩
+@layer(time=0, thread=0, coord=(1012))
+double entanglement_transition_probe(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z;
+    }
+    int32 cut = n / 2;
+    if (cut >= n) { cut = n - 1; }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_cnot(state, cut - 1, cut);   // 跨切 CNOT
+        acc = acc + qexpect_z(state, cut);
+        qgate_cnot(state, cut - 1, cut);   // CNOT 自逆还原
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 测量率调度器：代理梯度把测量率收敛到纠缠临界点
+@layer(time=0, thread=0, coord=(1013))
+double monitor_rate_scheduler(double rate, double entropy, double target) {
+    double grad = surrogate(entropy - target, 0.0, 1.0);
+    double new_rate = rate - 0.05 * grad;
+    if (new_rate < 0.0) { new_rate = 0.0; }
+    if (new_rate > 1.0) { new_rate = 1.0; }
+    return new_rate;
+}
+
+// 面积律估计：多 shot 约化纠缠熵拟合 S 与边界/体积标度
+@layer(time=0, thread=0, coord=(1014))
+double area_law_estimator(QObject state, double boundary_size, double volume_size) {
+    double s = 0.0;
+    int32 shots = 8;
+    int32 sh = 0;
+    while (sh < shots) {
+        double e = qstate_entropy(state);
+        if (e < 0.0) { e = 0.0; }
+        s = s + e;
+        sh = sh + 1;
+    }
+    int32 _ = state.measure();
+    s = s / shots;
+    double area_ratio = s / (boundary_size + 0.001);
+    double vol_ratio = s / (volume_size + 0.001);
+    return area_ratio / (area_ratio + vol_ratio);
+}
+
+// 隐形传态熵：多 shot 保真度估计 → 传态损失
+@layer(time=0, thread=0, coord=(1015))
+double teleportation_entropy(QObject a, QObject b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(a, b);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = a.measure();
+    int32 _b = b.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 中电路重置：测量某 qubit 后重置为 |0⟩
+@layer(time=0, thread=0, coord=(1016))
+QObject midcircuit_reset(QObject state, int32 qubit_idx) {
+    int32 b = qmeasure(state, qubit_idx);
+    if (b == 1) {
+        qgate_x(state, qubit_idx);
+    }
+    return state;
+}
+
+// 相变探测器：三个 dt 点各自多 shot 采样熵，算二阶差分曲率
+@layer(time=0, thread=0, coord=(1017))
+double phase_transition_detector(double dt, int32 steps) {
+    double s_prev = sample_entropy(dt - 0.05, steps);
+    double s_curr = sample_entropy(dt, steps);
+    double s_next = sample_entropy(dt + 0.05, steps);
+    double d1 = s_curr - s_prev;
+    double d2 = s_next - s_curr;
+    double curvature = d2 - d1;
+    if (curvature < 0.0) { curvature = -curvature; }
+    return curvature;
+}
+
+// 采样辅助：steps 步漂移 + 测量 → 香农熵（多 shot）
+@layer(time=0, thread=0, coord=(1018))
+double sample_entropy(double dt, int32 steps) {
+    int32 n0 = 0; int32 n1 = 0; int32 n2 = 0; int32 n3 = 0;
+    int32 shots = 8;
+    for (int32 sh = 0; sh < shots; sh = sh + 1) {
+        auto psi = new QuantumRegister(2);
+        int32 k = 0;
+        while (k < steps) {
+            qgate_h(psi, 0); qgate_rz(psi, 0, dt * GOLDEN_RATIO!()); qgate_h(psi, 0);
+            qgate_cnot(psi, 0, 1); qgate_rz(psi, 1, dt * SILVER_RATIO!()); qgate_cnot(psi, 0, 1);
+            k = k + 1;
+        }
+        int32 b0 = qmeasure(psi, 0);
+        int32 b1 = qmeasure(psi, 1);
+        int32 st = b0 * 2 + b1;
+        if (st == 0) { n0 = n0 + 1; }
+        if (st == 1) { n1 = n1 + 1; }
+        if (st == 2) { n2 = n2 + 1; }
+        if (st == 3) { n3 = n3 + 1; }
+    }
+    return shannon4(n0, n1, n2, n3);
+}

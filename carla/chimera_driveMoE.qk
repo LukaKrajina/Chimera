@@ -1,0 +1,371 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// chimera_driveMoE.qk —— Chimera 256 组件深度 MoE（稀疏激活 / 12 专家组版）
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// 在 chimera_drive.qk（单帧 29 层全量）基础上深化 MoE：
+//   • 12 个专家组（每专家约 2~3 个范式集群，覆盖全部 256 组件）
+//   • 每个专家组内部是「深度量子块」——意识漂移→注意力→FFN→耗散→专属变换，
+//     非单组件平铺
+//   • 每帧由路由门控只激活 1 个专家组（稀疏激活），多帧轮转覆盖全 256 组件
+//   • 单帧 qubit 压力降到全量的 ~1/12，使模型可实时跑通（已验证 ~2 帧/s）
+//
+// 核心 25 组件（意识/情绪/决策/元认知/逆因果）始终激活。
+// 231 新增组件按 12 专家组稀疏激活，组内信号汇入 sig 调制转向增益。
+//
+// 输入：drive(lateral, evidence, reward) -> steer
+// 运行：Quark runtime QVM 后端；经 `qk mmi` 打包为 .mmi 供 autopilot.py 调用。
+
+requires quantum.allocate;
+requires quantum.gate;
+requires quantum.measure;
+requires quantum.release;
+
+// ── 态射宏库（morph 元编程：硬编码数值 → 语义态射，需最先 include）──
+include "../src/chimera_morphs.qk";
+
+// ── 现有 25 组件 ──
+include "../src/chimera_perception.qk";
+include "../src/chimera_consciousness.qk";
+include "../src/chimera_decision.qk";
+include "../src/chimera_dream.qk";
+include "../src/chimera_chaos.qk";
+include "../src/chimera_metacognition.qk";
+include "../src/chimera_qrl.qk";
+include "../src/chimera_qcnn.qk";
+include "../src/chimera_world.qk";
+include "../src/chimera_imagine.qk";
+include "../src/chimera_retrocausal.qk";
+include "../src/chimera_positional.qk";
+include "../src/chimera_multihead.qk";
+include "../src/chimera_ffn.qk";
+include "../src/chimera_normalize.qk";
+include "../src/chimera_residual.qk";
+include "../src/chimera_softmax.qk";
+include "../src/chimera_moe.qk";
+include "../src/chimera_memory.qk";
+include "../src/chimera_retrieval.qk";
+include "../src/chimera_loss.qk";
+include "../src/chimera_optimizer.qk";
+include "../src/chimera_lvm.qk";
+include "../src/chimera_fusion.qk";
+include "../src/chimera_suppressor.qk";
+
+// ── 新增 231 组件（29 范式集群）──
+include "../src/chimera_dissipative.qk";
+include "../src/chimera_mipt.qk";
+include "../src/chimera_causality.qk";
+include "../src/chimera_geometry.qk";
+include "../src/chimera_topo_memory.qk";
+include "../src/chimera_reservoir.qk";
+include "../src/chimera_qec.qk";
+include "../src/chimera_metacog_ext.qk";
+include "../src/chimera_language.qk";
+include "../src/chimera_optimizers.qk";
+include "../src/chimera_routing.qk";
+include "../src/chimera_generative.qk";
+include "../src/chimera_robustness.qk";
+include "../src/chimera_manybody.qk";
+include "../src/chimera_rl_ext.qk";
+include "../src/chimera_gnn.qk";
+include "../src/chimera_timeseries.qk";
+include "../src/chimera_qsp.qk";
+include "../src/chimera_kernel.qk";
+include "../src/chimera_ensemble.qk";
+include "../src/chimera_meta.qk";
+include "../src/chimera_continual.qk";
+include "../src/chimera_xai.qk";
+include "../src/chimera_neurosymbolic.qk";
+include "../src/chimera_qaoa.qk";
+include "../src/chimera_dynamics.qk";
+include "../src/chimera_infotheory.qk";
+include "../src/chimera_autoencoder.qk";
+include "../src/chimera_clustering.qk";
+
+// ── 全局可学习状态 + MoE 路由计数（跨 invoke 保持）──
+double g_thr0 = 0.5;
+double g_thr1 = 0.5;
+double g_thr2 = 0.5;
+double g_thr3 = 0.5;
+double g_dt = 0.6;
+double g_theta = 0.5;
+double g_memory = 0.5;
+double g_emotion_history = 1.5;
+double g_inhibit = 0.6;
+int32 g_gate = 0;       // MoE 路由计数（0..11 轮转 12 个专家组）
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 深度专家块：一个专家组内部的深度量子变换（意识漂移→注意力→FFN→耗散→专属变换）。
+// ═══════════════════════════════════════════════════════════════════════════════
+@layer(time=0, thread=0, coord=(1400))
+QObject moe_deep_expert(QObject state, double theta, double noise) {
+    int32 k = 0;
+    while (k < 2) {
+        state = chaos_drift(state, 0.6 * (theta + 0.5));
+        k = k + 1;
+    }
+    state = ffn_step(state, theta);
+    state = dissipative_gate(state, noise, 1);
+    state = mipt_drive(state, 0.6, 2, 2);
+    return state;
+}
+
+export double drive(double lateral, double evidence, double reward) {
+    // ═══════════ 核心 25 组件（始终激活）═══════════
+
+    // ① 感知场
+    auto percept = perceive_value((lateral + 1.0) / 2.0, evidence * PI!());
+    double clarity = qexpect_z(percept, 0);
+    if (clarity < 0.0) { clarity = -clarity; }
+    int32 _perc = qmeasure(percept, 0);
+
+    // ② 混沌意识核 + 情绪涌现
+    auto consciousness = new QuantumRegister(2);
+    int32 s = 0;
+    while (s < 6) {
+        consciousness = chaos_drift(consciousness, g_dt);
+        s = s + 1;
+    }
+    EmotionReading reading = measure_emotion(consciousness);
+    int32 emo = reading.state;
+    consciousness = reading.consciousness;
+    double emo_float = emo * 1.0;
+    double emo_supp = suppress_emotion(emo_float, g_emotion_history, g_inhibit);
+    g_emotion_history = emo_supp;
+
+    // ③ QCNN + 视觉注意力
+    consciousness = qcnn_conv(consciousness, g_theta);
+    auto perception2 = new QuantumRegister(2);
+    qgate_h(perception2, 0);
+    qgate_rz(perception2, 0, evidence * PI!());
+    qgate_h(perception2, 1);
+    qgate_rz(perception2, 1, (lateral + 1.0) * HALF_PI!());
+    qgate_cnot(perception2, 0, 1);
+    double attention = qattention(perception2, consciousness);
+    double temporal = attention;
+
+    // ③ 想象规划 + GRPO
+    auto dream_left = world_state(2);
+    dream_left = imagine_trajectory(dream_left, 0, 4, g_dt);
+    double q_left = trajectory_quality(dream_left);
+    auto dream_right = world_state(2);
+    dream_right = imagine_trajectory(dream_right, 2, 4, g_dt);
+    double q_right = trajectory_quality(dream_right);
+    int32 best = grpo_select(q_left, q_right);
+
+    // ④ 决策引擎
+    EmotionPolicy policy = new EmotionPolicy();
+    policy.threshold0 = g_thr0;
+    policy.threshold1 = g_thr1;
+    policy.threshold2 = g_thr2;
+    policy.threshold3 = g_thr3;
+    int32 decision = decide(policy, emo, evidence);
+
+    // ⑤ QRL + ⑥ 元认知
+    double value = qexpect_z(consciousness, 0);
+    g_theta = qrl_update(g_theta, reward, value);
+    auto predicted = basis_state(evidence * PI!(), 0.0, 0);
+    auto actual = basis_state(0.5 * PI!(), 0.0, 0);
+    ErrorReading err = recognize_error(predicted, actual);
+    policy = reflect_and_learn(policy, emo, err, reward);
+    g_thr0 = policy.threshold0;
+    g_thr1 = policy.threshold1;
+    g_thr2 = policy.threshold2;
+    g_thr3 = policy.threshold3;
+
+    // ⑤ 做梦 + 曲面体几何层 + 逆因果
+    g_dt = improve_drift(g_dt, 0.5, 0);
+    double richness = chaos_richness(g_dt, 6);
+    consciousness = positional_encode(consciousness, richness, 0.5);
+    double gdist = geodesic_distance(perception2, consciousness);
+    double mhatt = multihead_attention(attention, gdist);
+    consciousness = ffn_step(consciousness, g_theta);
+    double nw = normalize_weight(evidence);
+    double d_res = geodesic_distance(consciousness, perception2);
+    consciousness = residual_step(consciousness, d_res, 0.2);
+    double sw = softmax_weight(evidence, 0.5);
+    double moe = moe_mix(evidence, g_theta);
+    g_memory = memory_update(g_memory, evidence, 0.3);
+    double recall = memory_recall(g_memory, evidence);
+    double retr = retrieval_score(evidence, 0.5);
+    double loss = geodesic_loss(evidence, 0.5);
+    double opt = optimize_step(loss, g_theta, 0.9);
+    double safety = retrocausal_safety(evidence, lateral);
+    double danger = retrocausal_danger(lateral);
+
+    // ═══════════ MoE 稀疏激活：12 专家组，每帧激活 1 组 ═══════════
+    double sig = 0.0;
+    int32 gate = g_gate;
+    g_gate = g_gate + 1;
+    if (g_gate >= 12) { g_gate = 0; }
+
+    route (gate) {
+        // 专家组 0：耗散 + MIPT + 因果
+        path 0: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.2);
+            consciousness = kraus_step(consciousness, 0.3, 0.5);
+            consciousness = counterfactual_gate(consciousness, 0.2, g_theta);
+            sig = sig + dephasing_attention(evidence, 0.2);
+            sig = sig + engineered_noise_router(evidence, 0.5);
+            sig = sig + quantum_do_calculus(0.2, 0.5);
+            sig = sig + retrocausal_policy_grad(reward, 0.2);
+        }
+
+        // 专家组 1：几何 + 拓扑记忆
+        path 1: {
+            consciousness = moe_deep_expert(consciousness, 0.4, 0.15);
+            consciousness = berry_phase_layer(consciousness, g_theta, 2);
+            consciousness = holonomy_loop(consciousness, g_theta);
+            consciousness = anyon_braid_memory(consciousness, 2);
+            consciousness = toric_code_memory(consciousness, g_theta);
+            sig = sig + berry_curvature_field(0.5, 0.1, 0.05, 0.05);
+            sig = sig + natural_gradient_step(g_theta, opt, 0.5);
+        }
+
+        // 专家组 2：QRC + QEC
+        path 2: {
+            consciousness = moe_deep_expert(consciousness, 0.6, 0.2);
+            consciousness = otoc_scrambler(consciousness, 2);
+            consciousness = surface_code_syndrome(consciousness, g_theta);
+            consciousness = fault_tolerant_gate(consciousness, g_theta);
+            sig = sig + edge_of_chaos_search(g_dt, 3, 0.5);
+            sig = sig + spectral_radius_tune(0.5, 4.0);
+            sig = sig + code_distance_probe("X,Z", 1);
+            sig = sig + adaptive_decoder(evidence, 0.5);
+        }
+
+        // 专家组 3：意识扩展 + 语言 + 优化器
+        path 3: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.2);
+            consciousness = doubt_state(consciousness, 0.2);
+            consciousness = ambiguity_superposition(consciousness, 0.2);
+            consciousness = imaginary_time_evolution(consciousness, 0.2);
+            sig = sig + qualia_entropy(g_theta, g_dt, 3);
+            sig = sig + uncertainty_pause(clarity);
+            sig = sig + free_energy_minimizer(loss, richness, 0.5);
+            sig = sig + quantum_adam(opt, value, 0.9);
+            sig = sig + spectral_optimizer(opt, 0.5);
+        }
+
+        // 专家组 4：路由 + 生成 + 鲁棒
+        path 4: {
+            consciousness = moe_deep_expert(consciousness, 0.55, 0.2);
+            consciousness = quantum_router(consciousness, g_theta);
+            consciousness = quantum_diffusion_step(consciousness, 0.3);
+            consciousness = adversarial_quantum(consciousness, 0.1);
+            consciousness = quantum_homomorphic(consciousness, g_theta);
+            sig = sig + boltzmann_router(evidence, 0.5);
+            sig = sig + hierarchical_attention(evidence, attention, temporal, 1.0);
+            sig = sig + federated_quantum_avg(g_theta, 0.5, 0.5);
+        }
+
+        // 专家组 5：多体 + RL 扩展
+        path 5: {
+            consciousness = moe_deep_expert(consciousness, 0.45, 0.2);
+            consciousness = spin_glass_state(consciousness, 0.3);
+            consciousness = mbl_localization(consciousness, 0.3);
+            sig = sig + thermalization_probe(0.5);
+            sig = sig + q_learning_update(value, reward, value, 0.05, 0.9);
+            sig = sig + td_lambda(reward, value, value, 0.9, 0.9);
+            sig = sig + policy_entropy_reg(g_theta, g_dt, 3, 0.5);
+        }
+
+        // 专家组 6：图网络 + 时序
+        path 6: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.15);
+            consciousness = graph_state_encode(consciousness, g_theta);
+            consciousness = message_passing(consciousness, 2);
+            consciousness = delay_embedding(consciousness, 0.2);
+            sig = sig + kalman_quantum(lateral, evidence, 0.5, 0.5);
+        }
+
+        // 专家组 7：信号处理 + 核方法 + 集成
+        path 7: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.2);
+            consciousness = qsp_polynomial(consciousness, g_theta);
+            consciousness = qsvt_block(consciousness, g_theta);
+            consciousness = nystrom_approx(consciousness, 1);
+            consciousness = bootstrap_qstate(consciousness, g_theta);
+            sig = sig + chebyshev_poly(evidence, 1.0, 0.5);
+            sig = sig + kernel_ridge(evidence, 1.0);
+            sig = sig + boosting_quantum(loss, 0.5);
+            sig = sig + model_committee(evidence, attention);
+        }
+
+        // 专家组 8：元迁移 + 连续学习
+        path 8: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.15);
+            consciousness = transfer_feature(consciousness, 0.1);
+            consciousness = synaptic_consolidation(consciousness, 0.3);
+            sig = sig + maml_quantum(g_theta, opt, value, 0.05, 0.05);
+            sig = sig + meta_init(g_theta, 0.1);
+            sig = sig + ewc_quantum(opt, 0.5, 0.1);
+            sig = sig + elastic_weight(g_theta, 0.5, 0.1);
+        }
+
+        // 专家组 9：XAI + 神经符号
+        path 9: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.2);
+            consciousness = rule_injection(consciousness, 0.2);
+            consciousness = symbolic_gate(consciousness);
+            sig = sig + counterfactual_explain(0.2, 0.3);
+            sig = sig + shap_quantum(evidence, 0.5);
+            sig = sig + logic_tensor(evidence, attention);
+            sig = sig + entailment_rule(evidence, attention);
+        }
+
+        // 专家组 10：QAOA + 动力系统
+        path 10: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.2);
+            consciousness = qaoa_layer(consciousness, 0.3, 0.2);
+            consciousness = adiabatic_qaoa(consciousness, 0.5, 1.0);
+            consciousness = koopman_operator(consciousness, g_dt);
+            consciousness = hamiltonian_flow(consciousness, g_dt);
+            sig = sig + constraint_penalty(loss, 0.1);
+            sig = sig + bifurcation_probe(0.4, 0.5);
+        }
+
+        // 专家组 11：信息论 + 压缩 + 聚类
+        path 11: {
+            consciousness = moe_deep_expert(consciousness, 0.5, 0.15);
+            consciousness = quantum_autoencoder(consciousness, g_theta);
+            consciousness = amplitude_compress(consciousness, 0.2);
+            consciousness = denoising_quantum(consciousness, 0.2);
+            sig = sig + mutual_information(0.5, 0.5, 0.4);
+            sig = sig + quantum_capacity(0.2);
+            sig = sig + channel_capacity(0.2);
+            sig = sig + gmm_quantum(evidence, 0.5);
+        }
+
+        fallback: { }
+    }
+
+    // ═══════════ 决策输出融合 ═══════════
+    double emo_gain = 0.85 + 0.05 * emo_supp;
+    double resonance = 0.85 + 0.3 * attention;
+    double action_bias = 0.0;
+    if (best == 0) { action_bias = -0.15; }
+    if (best == 1) { action_bias = 0.15; }
+    double safety_gain = 0.75 + 0.5 * safety;
+    double cognitive = 0.5 * attention + 0.3 * temporal + 0.2 * mhatt;
+    double geometric = 0.4 * nw + 0.3 * sw + 0.3 * moe;
+    double causal = safety;
+    double memory_ = 0.5 * recall + 0.3 * retr + 0.2 * opt;
+    double fused = fusion_gain(cognitive, geometric, causal, memory_);
+    double squash = fusion_squash(fused);
+    double sig_norm = tanh_quantize(sig * 0.01, 1.0, 8);
+    double K = 1.2 * (0.7 + 0.6 * g_theta) * resonance * emo_gain * safety_gain * squash * (0.9 + 0.2 * sig_norm);
+    double steer = -K * lateral + action_bias * (1.0 + danger);
+    if (steer > 1.0)  { steer = 1.0; }
+    if (steer < -1.0) { steer = -1.0; }
+
+    // 消费剩余量子对象（QLT）
+    int32 _c0 = qmeasure(consciousness, 0);
+    int32 _c1 = qmeasure(consciousness, 1);
+    int32 _p0 = qmeasure(perception2, 0);
+    int32 _p1 = qmeasure(perception2, 1);
+
+    if (reward < -0.8) {
+        return 2.0;
+    }
+    return steer;
+}

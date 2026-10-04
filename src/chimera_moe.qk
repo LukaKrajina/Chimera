@@ -1,0 +1,28 @@
+// chimera_moe.qk —— 量子专家混合（曲面体曲率驱动的玻尔兹曼稀疏路由）
+//
+// 对应现代 LLM 的 Mixture of Experts（稀疏门控路由到 top-k 专家）。
+// MoE 的路由不是「线性门控 1/(1+g)」，而是 Quark 的真·玻尔兹曼软门控 boltzmann2：
+//   专家 A 权重 = σ(−g) = e^{−g}/(e^{−g}+1)（度规 g 越大 → 权重越小 → 切到对偶专家 B）
+// 对偶专家 B = T-对偶反转（inversion）× polymer 铁磁权重（自旋链配分函数）。
+//
+// MoE 的 top-k 稀疏门控使用「曲率驱动的玻尔兹曼软门控」——度规（曲率）
+//       本身就是门控能量，靠近无穷远边界（度规发散）时自动切换到对偶专家，
+//       且专家 B 带 polymer（自旋链）配分函数权重，非平凡的非线性。
+
+// 曲率路由：玻尔兹曼软门控（度规 → 专家 A 权重 σ(−g)）
+@layer(time=0, thread=0, coord=(60))
+double moe_route(double x) {
+    double g = hyperbolic_metric(x);       // 曲率（度规）
+    if (g > 100.0) { g = 100.0; }
+    return boltzmann2(1.0, 0.0, -g);       // σ(−g)：度规大 → 权重小 → 切到专家 B
+}
+
+// 专家混合：专家 A（原空间）× 专家 B（T-对偶 + polymer 铁磁）的玻尔兹曼混合
+@layer(time=0, thread=0, coord=(61))
+double moe_mix(double x, double theta) {
+    double rw = moe_route(x);                          // 曲率驱动的玻尔兹曼门控权重
+    double expert_a = x * theta;                       // 专家 A：原空间线性
+    // 专家 B：T-对偶反转 × polymer 铁磁权重（自旋链配分函数，β=1,h=0.5,len=3）
+    double expert_b = inversion(x + 0.001) * polymer_weight(1.0, 0.5, 3.0);
+    return rw * expert_a + (1.0 - rw) * expert_b;      // 玻尔兹曼软门控混合
+}

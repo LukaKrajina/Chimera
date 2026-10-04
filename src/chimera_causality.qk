@@ -1,0 +1,117 @@
+// chimera_causality.qk —— 量子因果与反事实（8 组件）
+
+// 反事实计算门：利用逆因果容量在「粒子未过信道」时仍提取结果
+@layer(time=0, thread=0, coord=(1020))
+QObject counterfactual_gate(QObject state, double p, double theta) {
+    double ccap = retrocausal_c_capacity(0, p);
+    double phase = theta * ccap / (ccap + 3.0);
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, phase);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 伪密度矩阵：多 shot 保真度估计 → 时空关联失配
+@layer(time=0, thread=0, coord=(1021))
+double pseudo_density_matrix(QObject past, QObject present) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(past, present);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _p = past.measure();
+    int32 _n = present.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 量子 do-演算：干预（do 操作）前后回程增益的变化量 = 干预效应
+@layer(time=0, thread=0, coord=(1022))
+double quantum_do_calculus(double noise, double intervention) {
+    double g0 = retrocausal_gain(1, noise);
+    double g1 = retrocausal_gain(1, noise * (1.0 - intervention));
+    return g1 - g0;
+}
+
+// 时间非定域关联：逆因果容量衡量的「未来→过去」非定域通信强度
+@layer(time=0, thread=0, coord=(1023))
+double temporal_nonlocal_corr(double noise, double theta) {
+    double q = retrocausal_q_capacity(1, noise);
+    double deph = retrocausal_ctc_dephasing(theta);
+    return q / (q + 1.0 + deph);
+}
+
+// CTC 后选择解决：封闭类时曲线后选择增益，解决因果矛盾
+@layer(time=0, thread=0, coord=(1024))
+double ctc_resolve(double theta, double mu2, double lambda) {
+    double g = retrocausal_ctc_gain(2, theta, mu2, lambda);
+    double q = retrocausal_ctc_q_capacity(2, theta, mu2, lambda);
+    return g / (g + q + 1.0);
+}
+
+// 逆因果策略梯度：未来奖励经回程增益回传的梯度
+@layer(time=0, thread=0, coord=(1025))
+double retrocausal_policy_grad(double reward, double noise) {
+    double gain = retrocausal_gain(0, noise);
+    double grad = surrogate(reward, 0.0, 1.5);
+    return gain * grad;
+}
+
+// 量子 Granger 因果：过去/现在分别编码态并弱测量，谱隙差经量子态读出
+@layer(time=0, thread=0, coord=(1026))
+double granger_quantum(double past_gap, double present_gap) {
+    auto past = basis_state(past_gap * PI!(), 0.0, 0);
+    auto pres = basis_state(present_gap * PI!(), 0.0, 0);
+    double fp = 0.0;
+    double fpres = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        fp = fp + qexpect_z(past, 0);
+        fpres = fpres + qexpect_z(pres, 0);
+        s = s + 1;
+    }
+    int32 _a = past.measure();
+    int32 _b = pres.measure();
+    fp = fp / 8.0;
+    fpres = fpres / 8.0;
+    double improvement = fp - fpres;
+    if (improvement < 0.0) { improvement = 0.0; }
+    return improvement / (past_gap + 0.001);
+}
+
+// 因果熵：观测态与干预态各自多 shot 采样测量熵，熵差 = 因果熵
+@layer(time=0, thread=0, coord=(1027))
+double causal_entropy(QObject obs_state, QObject do_state) {
+    double so = 0.0;
+    double sd = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double eo = qstate_entropy(obs_state);
+        double ed = qstate_entropy(do_state);
+        if (eo < 0.0) { eo = 0.0; }
+        if (ed < 0.0) { ed = 0.0; }
+        so = so + eo;
+        sd = sd + ed;
+        s = s + 1;
+    }
+    int32 _a = obs_state.measure();
+    int32 _b = do_state.measure();
+    so = so / 8.0;
+    sd = sd / 8.0;
+    double ce = so - sd;
+    if (ce < 0.0) { ce = -ce; }
+    return ce;
+}

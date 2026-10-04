@@ -1,0 +1,21 @@
+// chimera_normalize.qk —— 量子归一化（曲面体测地线投影 + log-sum-exp）
+//
+// 对应 Transformer 的 Layer Normalization。归一化不是「减均值除方差」，
+// 而是把量投影回单位球面（CP^{d-1} 的测地线投影）——用 Poincaré 度规
+// 4/(1-|x|²)² 度量「偏离单位盘边界」的程度，再用 log-sum-exp（配分函数
+// 的对数）做对数域软归一化。
+//
+// LayerNorm 的欧几里德归一化使用「双曲度规加权 + log-sum-exp 归一化」——
+//       度规发散（|x|→1，靠近无穷远边界）时权重收敛到 0，天然软归一化；
+//       实现下沉到 Quark 的 logsumexp2 原语（softmax 配分函数对数）。
+
+// 度规归一化：log-sum-exp（配分函数对数）软归一化 + 双曲度规加权
+@layer(time=0, thread=0, coord=(23))
+double normalize_weight(double x) {
+    double g = hyperbolic_metric(x);      // Poincaré 度规 4/(1-x²)²
+    if (g > 100.0) { g = 100.0; }         // 防发散（度规在边界发散）
+    // log-sum-exp：log(e^{g·x} + e^{g·0})（配分函数对数，softmax 归一化核心）
+    double lse = logsumexp2(x, 0.0, g);
+    // 软归一化到 [0,1]（LayerNorm 的量子版，对数域）
+    return 1.0 / (1.0 + lse);
+}

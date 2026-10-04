@@ -1,0 +1,42 @@
+// chimera_imagine.qk —— 量子想象规划（DreamerV3 想象 + GRPO 组相对优势）
+
+// 在量子隐空间「做梦」想象 K 条候选轨迹，用组相对优势 A = R − mean(R)
+// 选出最优轨迹——「决策前的内心彩排」的量子实现。
+//
+// 依赖 chimera_world.qk 的 world_rollout（由主程序 include 提供，不在此重复 include）。
+
+// 想象轨迹：从状态 rollout steps 步未来（Dreamer 式做梦）
+@layer(time=0, thread=0, coord=(32))
+QObject imagine_trajectory(QObject state, int32 action, int32 steps, double dt) {
+    return world_rollout(state, action, steps, dt);
+}
+
+// 轨迹质量：想象态的 ⟨Z⟩ 尖锐度（越确定 = 越清晰的规划）
+//    消费轨迹态，返回质量 ∈ [0,1]。
+@layer(time=0, thread=0, coord=(33))
+double trajectory_quality(QObject trajectory) {
+    double z = qexpect_z(trajectory, 0);
+    if (z < 0.0) {
+        z = -z;
+    }
+    int32 _ = trajectory.measure();   // 消费（QLT）
+    return z;
+}
+
+// 组相对优势：A = R − mean(R)（GRPO 的核心）
+// 正优势 = 该轨迹优于组均值，应被强化。
+@layer(time=0, thread=0, coord=(34))
+double grpo_advantage(double reward, double baseline) {
+    return reward - baseline;
+}
+
+// GRPO 轨迹选择：比较两条候选轨迹质量，返回更优者索引（0/1）
+// 完整 GRPO 流程 = 生成 K 条轨迹 → 评估质量 → 组内优势 → 选最优；
+// 本函数提供「两两选优」原语，K 条轨迹由主程序循环调用完成锦标赛选优。
+@layer(time=0, thread=0, coord=(43))
+int32 grpo_select(double quality1, double quality2) {
+    if (quality1 >= quality2) {
+        return 0;   // 第一条轨迹更优
+    }
+    return 1;       // 第二条轨迹更优
+}

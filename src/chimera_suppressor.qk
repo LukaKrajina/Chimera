@@ -1,0 +1,32 @@
+// chimera_suppressor.qk —— 情绪抑制器（LIF 神经元动力学 + tanh 量化）
+//
+// 抑制器把当前情绪态向「历史情绪」拉近，降低情绪涌现的波动。
+// 抑制权重 inhibit ∈ [0,1]：越大波动越小（情绪趋近历史、稳定），
+// 越小波动越大（情绪自由涌现、跳变）。
+//
+// 对应生物神经系统的「前额叶 → 杏仁核」情绪调节通路，实现下沉到 Quark 的
+// 真·神经原语：
+//   • lif_step：LIF 漏积分发放神经元——膜电位（情绪）以泄漏系数 inhibit 向
+//     历史基线衰减，输入当前情绪的未抑制部分，超阈值发放归零（情绪过载重置）。
+//   • tanh_quantize：连续情绪经 tanh 软饱和后 8 位量化（情绪离散化的量子版）。
+
+// 情绪抑制：LIF 神经元动力学 + tanh 量化（非纯线性插值）
+//   inhibit=1 → 完全稳定（=history，无波动）
+//   inhibit=0 → 自由涌现（=current，全波动）
+@layer(time=0, thread=0, coord=(72))
+double suppress_emotion(double current, double history, double inhibit) {
+    // LIF 漏积分：膜电位 = 历史基线，泄漏系数 = inhibit，输入 = 当前情绪未抑制部分
+    //   V = inhibit·history + (1−inhibit)·current（与原线性插值同构），
+    //   超阈值 theta=2.0 发放归零（情绪过载 → 重置）
+    double mem = lif_step(history, (1.0 - inhibit) * current, inhibit, 2.0);
+    // tanh 量化：连续情绪 → tanh 软饱和 → 8 位离散情绪
+    return tanh_quantize(mem, 1.0, 8);
+}
+
+// 情绪波动量：当前情绪与历史情绪的偏差（诊断抑制效果，反馈抑制权重）
+@layer(time=0, thread=0, coord=(73))
+double emotion_fluctuation(double current, double history) {
+    double f = current - history;
+    if (f < 0.0) { f = -f; }
+    return f;
+}

@@ -1,0 +1,102 @@
+// chimera_neurosymbolic.qk —— 量子神经符号
+
+// 逻辑张量：真值编码态重叠加权的 Łukasiewicz t-norm
+@layer(time=0, thread=0, coord=(1300))
+double logic_tensor(double a, double b) {
+    auto s_a = basis_state(a * PI!(), 0.0, 0);
+    auto s_b = basis_state(b * PI!(), 0.0, 0);
+    double overlap = qattention(s_a, s_b);
+    int32 _a = s_a.measure();
+    int32 _b = s_b.measure();
+    return tnorm_luk(a, b) * (0.5 + overlap);
+}
+
+// 规则注入：X 门编码规则（规则 = 符号翻转）
+@layer(time=0, thread=0, coord=(1301))
+QObject rule_injection(QObject state, double rule_strength) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, rule_strength);
+        qgate_x(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 符号门：约束编码（CNOT = 符号约束）
+@layer(time=0, thread=0, coord=(1302))
+QObject symbolic_gate(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    return state;
+}
+
+// t-conorm 组合：真值编码态重叠加权的乘积 t-conorm（析取）
+@layer(time=0, thread=0, coord=(1303))
+double tconorm_combine(double a, double b) {
+    auto s_a = basis_state(a * PI!(), 0.0, 0);
+    auto s_b = basis_state(b * PI!(), 0.0, 0);
+    double overlap = qattention(s_a, s_b);
+    int32 _a = s_a.measure();
+    int32 _b = s_b.measure();
+    return tnorm_prod(a, b) * (0.5 + overlap);
+}
+
+// 逻辑→量子态蒸馏：多 shot 规则态与样本态对齐
+@layer(time=0, thread=0, coord=(1304))
+double knowledge_distill_sym(QObject rule_state, QObject sample) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(rule_state, sample);
+        s = s + 1;
+    }
+    int32 _a = rule_state.measure();
+    int32 _b = sample.measure();
+    return acc / 8.0;
+}
+
+// 蕴含规则：真值编码态重叠加权的 Gödel t-norm（蕴含）
+@layer(time=0, thread=0, coord=(1305))
+double entailment_rule(double premise, double conclusion) {
+    auto s_p = basis_state(premise * PI!(), 0.0, 0);
+    auto s_c = basis_state(conclusion * PI!(), 0.0, 0);
+    double overlap = qattention(s_p, s_c);
+    int32 _a = s_p.measure();
+    int32 _b = s_c.measure();
+    return tnorm_godel(premise, conclusion) * (0.5 + overlap);
+}
+
+// 模糊逻辑层：真值编码态重叠加权的 logsumexp 软逻辑
+@layer(time=0, thread=0, coord=(1306))
+double fuzzy_logic_layer(double a, double b) {
+    auto s_a = basis_state(a * PI!(), 0.0, 0);
+    auto s_b = basis_state(b * PI!(), 0.0, 0);
+    double overlap = qattention(s_a, s_b);
+    int32 _a = s_a.measure();
+    int32 _b = s_b.measure();
+    double lse = logsumexp2(a, b, 1.0);
+    return (1.0 / (1.0 + lse)) * (0.5 + overlap);
+}
+
+// 约束满足：谱隙编码态多 shot 期望 → QUBO 可行性
+@layer(time=0, thread=0, coord=(1307))
+double constraint_satisfy(double gap, double penalty) {
+    if (gap < 0.0) { gap = 0.0; }
+    auto state = basis_state(gap * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc * gap / (gap + penalty);
+}

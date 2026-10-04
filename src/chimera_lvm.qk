@@ -1,0 +1,57 @@
+// chimera_lvm.qk —— 量子视觉序列模型（Quantum Vision Model，LVM 的量子化）
+//
+// 视觉 token = 量子态叠加（一个 token 态相干叠加多个视觉特征）；
+//       注意力 = qattention 态重叠；时序一致性 = 前后帧的真·量子保真度
+//       （qstate_fidelity，非态重叠近似）；下一帧预测 = 多层视觉 token 演化
+//       + tanh 量化非线性（非纯酉混沌漂移）。
+//
+// 依赖 Quark：qattention / encode_image /
+//       qstate_fidelity / tanh_quantize。
+
+// 视觉帧编码：图像 → num_qubits 量子态（叠加的视觉 token）
+@layer(time=0, thread=0, coord=(29))
+QObject encode_frame(string img_path, int32 num_qubits) {
+    return encode_image(img_path, num_qubits);
+}
+
+// 视觉注意力：两个视觉 token 的态重叠（query·key 相似度的量子版）
+//    借用（不消费），供空间注意力 / 相似度检索使用。
+@layer(time=0, thread=0, coord=(30))
+double visual_attention(QObject a, QObject b) {
+    return qattention(a, b);
+}
+
+// 时序一致性：前后帧的真·量子保真度（视觉序列自回归的预测置信度）
+//    消费前后两帧，返回保真度 F(ρ_prev, ρ_curr) ∈ [0,1]（1 = 前后帧一致）。
+@layer(time=0, thread=0, coord=(31))
+double temporal_coherence(QObject prev, QObject curr) {
+    double f = qstate_fidelity(prev, curr);   // 真·量子保真度（非态重叠近似）
+    int32 _p = prev.measure();   // 消费（QLT）
+    int32 _c = curr.measure();   // 消费（QLT）
+    return f;
+}
+
+// 自回归预测下一帧：视觉序列的时间演化（LVM 的核心——预测下一个视觉 token）
+//    多层视觉 token 演化（Rz 相位注入 + 环形 CNOT 纠缠）+ tanh 量化非线性
+//    （视觉 token 的非线性激活，非纯酉混沌漂移），返回预测的下一帧，
+//    供 temporal_coherence 度量「预测 vs 实际」的时序一致性。
+@layer(time=0, thread=0, coord=(38))
+QObject predict_next_frame(QObject frame, double dt) {
+    int32 n = qobj_num_qubits(frame);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(frame, i);
+        qgate_rz(frame, i, dt * (GOLDEN_RATIO!() + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(frame, j, j + 1);
+        j = j + 1;
+    }
+    // 非线性激活：tanh 量化（视觉 token 的非线性，非纯酉演化）
+    double act = qexpect_z(frame, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(frame, 0, nl * QUARTER_PI!());
+    return frame;
+}

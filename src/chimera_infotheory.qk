@@ -1,0 +1,117 @@
+// chimera_infotheory.qk —— 量子信息度量（8 组件）
+
+// 互信息：子系统熵编码态重叠加权的 I(A:B)=S(A)+S(B)−S(AB)
+@layer(time=0, thread=0, coord=(1330))
+double mutual_information(double s_a, double s_b, double s_ab) {
+    auto a_state = basis_state(s_a * PI!(), 0.0, 0);
+    auto b_state = basis_state(s_b * PI!(), 0.0, 0);
+    double overlap = qattention(a_state, b_state);
+    int32 _a = a_state.measure();
+    int32 _b = b_state.measure();
+    return (s_a + s_b - s_ab) * (0.5 + overlap);
+}
+
+// 量子容量：噪声编码态多 shot 期望调制逆因果量子容量
+@layer(time=0, thread=0, coord=(1331))
+double quantum_capacity(double noise) {
+    auto state = basis_state(noise * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return retrocausal_q_capacity(0, noise) * (0.5 + acc);
+}
+
+// 相对熵：多 shot 态保真度距离（单调近似）
+@layer(time=0, thread=0, coord=(1332))
+double relative_entropy(QObject rho, QObject sigma) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(rho, sigma);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = rho.measure();
+    int32 _b = sigma.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 信道容量：噪声编码态多 shot 期望调制逆因果经典容量
+@layer(time=0, thread=0, coord=(1333))
+double channel_capacity(double noise) {
+    auto state = basis_state(noise * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return retrocausal_c_capacity(0, noise) * (0.5 + acc);
+}
+
+// 数据处理不等式：输入/输出谱隙编码态重叠调制的信息损失
+@layer(time=0, thread=0, coord=(1334))
+double data_processing(double gap_in, double gap_out) {
+    auto s_in = basis_state(gap_in * PI!(), 0.0, 0);
+    auto s_out = basis_state(gap_out * PI!(), 0.0, 0);
+    double overlap = qattention(s_in, s_out);
+    int32 _a = s_in.measure();
+    int32 _b = s_out.measure();
+    double d = gap_in - gap_out;
+    if (d < 0.0) { d = 0.0; }
+    return d * (0.5 + overlap);
+}
+
+// 量子 Cramér-Rao 界：多 shot 信心 |⟨Z⟩| → 估计误差下界
+@layer(time=0, thread=0, coord=(1335))
+double quantum_cramerrao(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return 1.0 / (acc + 0.001);
+}
+
+// 量子 Fisher 信息：多 shot 态尖锐度平方
+@layer(time=0, thread=0, coord=(1336))
+double fisher_information(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return acc * acc;
+}
+
+// 纠缠代价：多 shot 纠缠熵 / ln2（代价 = 所需 Bell 对数目）
+@layer(time=0, thread=0, coord=(1337))
+double entanglement_cost(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double e = qstate_entropy(state);
+        if (e < 0.0) { e = 0.0; }
+        acc = acc + e;
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return (acc / 8.0) / LN2!();
+}

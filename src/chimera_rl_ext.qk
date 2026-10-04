@@ -1,0 +1,128 @@
+// chimera_rl_ext.qk —— 量子强化学习扩展（8 组件）
+
+
+// 量子 Actor-Critic：多 shot 价值 = ⟨Z⟩（信心即价值）
+@layer(time=0, thread=0, coord=(1210))
+double actor_critic_q(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 量子 Q-learning 更新：Q 与目标编码态重叠加权的 TD 更新
+@layer(time=0, thread=0, coord=(1211))
+double q_learning_update(double q, double reward, double max_next_q, double lr, double gamma) {
+    double target = reward + gamma * max_next_q;
+    auto q_state = basis_state(q * PI!(), 0.0, 0);
+    auto target_state = basis_state(target * PI!(), 0.0, 0);
+    double overlap = qattention(q_state, target_state);
+    int32 _a = q_state.measure();
+    int32 _b = target_state.measure();
+    return q + lr * (target - q) * (0.5 + overlap);
+}
+
+// TD(λ)：奖励与价值差编码态重叠加权的时序差分
+@layer(time=0, thread=0, coord=(1212))
+double td_lambda(double reward, double value_next, double value_curr, double lambda, double gamma) {
+    double delta = reward + gamma * value_next - value_curr;
+    auto r_state = basis_state(reward * PI!(), 0.0, 0);
+    auto v_state = basis_state((value_next - value_curr) * PI!(), 0.0, 0);
+    double overlap = qattention(r_state, v_state);
+    int32 _a = r_state.measure();
+    int32 _b = v_state.measure();
+    return lambda * delta * (0.5 + overlap);
+}
+
+// 资格迹衰减：迹编码态多 shot 期望 → 退相式衰减
+@layer(time=0, thread=0, coord=(1213))
+double eligibility_trace(double trace, double lambda, double gamma) {
+    auto t_state = basis_state(trace * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(t_state, 0);
+        s = s + 1;
+    }
+    int32 _ = t_state.measure();
+    acc = acc / 8.0;
+    double decay = lambda * gamma;
+    return decay * acc;
+}
+
+// 策略熵正则：自备态制备 + 漂移 + 多 shot 测量 → 最大熵正则项
+@layer(time=0, thread=0, coord=(1214))
+double policy_entropy_reg(double theta, double dt, int32 steps, double temperature) {
+    int32 n0 = 0; int32 n1 = 0; int32 n2 = 0; int32 n3 = 0;
+    int32 shots = 8;
+    for (int32 sh = 0; sh < shots; sh = sh + 1) {
+        auto psi = new QuantumRegister(2);
+        qgate_rz(psi, 0, theta);
+        qgate_h(psi, 0);
+        qgate_h(psi, 1);
+        int32 k = 0;
+        while (k < steps) {
+            qgate_h(psi, 0); qgate_rz(psi, 0, dt * GOLDEN_RATIO!()); qgate_h(psi, 0);
+            qgate_cnot(psi, 0, 1); qgate_rz(psi, 1, dt * SILVER_RATIO!()); qgate_cnot(psi, 0, 1);
+            k = k + 1;
+        }
+        int32 b0 = qmeasure(psi, 0);
+        int32 b1 = qmeasure(psi, 1);
+        int32 st = b0 * 2 + b1;
+        if (st == 0) { n0 = n0 + 1; }
+        if (st == 1) { n1 = n1 + 1; }
+        if (st == 2) { n2 = n2 + 1; }
+        if (st == 3) { n3 = n3 + 1; }
+    }
+    return temperature * shannon4(n0, n1, n2, n3);
+}
+
+// 内在动机：多 shot 预测态 vs 实际态失配（好奇）
+@layer(time=0, thread=0, coord=(1215))
+double intrinsic_motivation(QObject predicted, QObject actual) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(predicted, actual);
+        s = s + 1;
+    }
+    int32 _a = predicted.measure();
+    int32 _b = actual.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 探索奖励：多 shot 新异度（态与已访问态保真度）
+@layer(time=0, thread=0, coord=(1216))
+double exploration_bonus(QObject state, QObject visited) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(state, visited);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = state.measure();
+    int32 _b = visited.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 优先经验回放：TD 误差编码态多 shot 期望 → 采样优先级
+@layer(time=0, thread=0, coord=(1217))
+double prioritized_replay(double td_error, double temperature) {
+    auto state = basis_state(td_error * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}

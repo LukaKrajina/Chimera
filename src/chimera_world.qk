@@ -1,0 +1,111 @@
+// chimera_world.qk —— 量子混沌世界模型（QCWM，Quantum Chaotic World Model）
+//
+//  世界隐状态 |s_t⟩ 在态空间漂移，world_rollout 隐空间想象
+//  动作相位注入态，world_step 是「动作 → 下一状态」的可交互世界
+//  V(视觉)+M(世界)+C(控制) → 本组件即 M（世界模型），与① 感知场（V）、④ 决策引擎（C）闭环
+//
+//   ① 量子混沌态作世界隐状态：|s_t⟩ 随混沌漂移演化（无理角 + 环形 CNOT），
+//     取代 DreamerV3 的 RSSM 确定性+随机隐状态；混沌边缘即最优预测点。
+//   ② 动作条件 = 相位注入：动作 a 编码为相位 θ=a·π/8，注入全部 qubit 后
+//     混沌漂移放大差异——「不同动作 → 不同未来世界」。
+//   ③ 预测误差征象作世界损失：ε = 1 − |⟨预测|实际⟩|²（qattention 态重叠），
+//     既是世界模型的训练信号，也是元认知核的「惊讶/好奇」内在奖励。
+//
+
+// 世界隐状态初始化：N qubit 量子混沌态 |s_0⟩
+@layer(time=0, thread=0, coord=(20))
+QObject world_state(int32 num_qubits) {
+    auto s = new QuantumRegister(num_qubits);
+    return s;
+}
+
+// 世界漂移：N qubit 混沌演化（无理角旋转 + 环形 CNOT 纠缠）
+//    继承 chimera_consciousness.qk 的 chaos_drift 思路（黄金比角 + 纠缠），
+//    扩展到任意 qubit 数，并加位置扰动 (0.1·i) 增强混沌丰富度。
+@layer(time=0, thread=0, coord=(21))
+QObject world_drift(QObject state, double dt) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, dt * (GOLDEN_RATIO!() + 0.1 * i));   // 黄金比角 + 位置扰动
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);                     // 环形纠缠（世界状态的整合）
+        j = j + 1;
+    }
+    return state;
+}
+
+// 动作条件世界演化一步：动作相位注入 + 混沌漂移
+//    |s_{t+1}⟩ = world_step(|s_t⟩, a_t) —— 「动作 → 下一状态」的可交互世界。
+@layer(time=0, thread=0, coord=(22))
+QObject world_step(QObject state, int32 action, double dt) {
+    double theta = action * 0.3926990817;   // action · π/8 ∈ [0, 2π)
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta);           // 动作相位注入全部 qubit
+        i = i + 1;
+    }
+    state = world_drift(state, dt);          // 混沌漂移放大动作差异
+    return state;
+}
+
+// 世界模型误差：预测态 vs 实际态 的态重叠征象
+//    ε = 1 − |⟨预测|实际⟩|² ∈ [0,1]：0 = 完美预测，1 = 完全错误。
+//    消费两个态（QLT：QObject 传参即所有权转移），返回误差征象。
+//    既是世界模型的训练信号，也是「惊讶/好奇」内在奖励（JEPA 预测嵌入 × 元认知）。
+@layer(time=0, thread=0, coord=(23))
+double world_error(QObject predicted, QObject actual) {
+    double overlap = qattention(predicted, actual);
+    int32 _p = predicted.measure();   // 消费（QLT）
+    int32 _a = actual.measure();      // 消费（QLT）
+    return 1.0 - overlap;
+}
+
+// 想象 rollout：从当前状态想象 steps 步未来（Dreamer 式做梦）
+//    在隐空间连续漂移，返回最终想象状态（供规划/决策使用）。
+@layer(time=0, thread=0, coord=(24))
+QObject world_rollout(QObject state, int32 action, int32 steps, double dt) {
+    int32 k = 0;
+    while (k < steps) {
+        state = world_step(state, action, dt);
+        k = k + 1;
+    }
+    return state;
+}
+
+// 误差驱动的漂移步长优化（世界模型自我改进，Dream-RSI 的简化）
+//    预测误差大（>0.5）→ 减小 dt（小步长更精确）；误差小 → 增大 dt（更高效）。
+//    dt 收敛到「精确预测」与「高效演化」的平衡点（对应混沌边缘）。
+@layer(time=0, thread=0, coord=(25))
+double improve_world(double dt, double error) {
+    double new_dt = dt - 0.05 * (error - 0.5);
+    if (new_dt < 0.05) {
+        new_dt = 0.05;
+    }
+    if (new_dt > 1.5) {
+        new_dt = 1.5;
+    }
+    return new_dt;
+}
+
+// 有限差分梯度优化 dt（世界模型自我改进的完整版）
+//    ∂ε/∂dt ≈ [ε(dt+h) − ε(dt−h)] / 2h，err_plus/err_minus 为 dt±h 处的预测误差。
+//    梯度下降 dt ← dt − lr·∂ε/∂dt，使预测误差 ε 最小（世界模型学会预测环境动态）。
+@layer(time=0, thread=0, coord=(42))
+double improve_world_grad(double dt, double err_plus, double err_minus) {
+    double h = 0.01;
+    double grad = (err_plus - err_minus) / (2.0 * h);
+    double new_dt = dt - 0.1 * grad;
+    if (new_dt < 0.05) {
+        new_dt = 0.05;
+    }
+    if (new_dt > 1.5) {
+        new_dt = 1.5;
+    }
+    return new_dt;
+}

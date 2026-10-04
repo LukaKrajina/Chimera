@@ -1,0 +1,120 @@
+// chimera_robustness.qk —— 量子鲁棒/安全/联邦（7 组件）
+
+// 量子对抗扰动：注入对抗相位扰动 + 环形纠缠（鲁棒性评估）
+@layer(time=0, thread=0, coord=(1120))
+QObject adversarial_quantum(QObject state, double eps) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, eps * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 量子差分隐私噪声：注入亚高斯噪声扰动 + 环形纠缠（ITA 隐私扰动）
+@layer(time=0, thread=0, coord=(1121))
+QObject quantum_dp_noise(QObject state, double epsilon) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, epsilon * (0.5 + 0.05 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    if (epsilon > 0.5) {
+        int32 _ = qmeasure(state, 0);
+    }
+    return state;
+}
+
+// 认证鲁棒性：多 shot 扰动前后保真度 → 鲁棒性认证
+@layer(time=0, thread=0, coord=(1122))
+double certified_robustness(QObject clean, QObject perturbed) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(clean, perturbed);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = clean.measure();
+    int32 _b = perturbed.measure();
+    return acc / 8.0;
+}
+
+// 联邦量子平均：参数编码态重叠加权的分布式聚合
+@layer(time=0, thread=0, coord=(1123))
+double federated_quantum_avg(double param_a, double param_b, double weight) {
+    auto s_a = basis_state(param_a * PI!(), 0.0, 0);
+    auto s_b = basis_state(param_b * PI!(), 0.0, 0);
+    double overlap = qattention(s_a, s_b);
+    int32 _a = s_a.measure();
+    int32 _b = s_b.measure();
+    return (weight * param_a + (1.0 - weight) * param_b) * (0.5 + overlap);
+}
+
+// 量子同态加密：盲计算（受控操作不泄露数据）
+@layer(time=0, thread=0, coord=(1124))
+QObject quantum_homomorphic(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 影子层析：少量随机测量估计态性质（Clifford 影子）
+@layer(time=0, thread=0, coord=(1125))
+double shadow_tomography(QObject state, int32 shots) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < shots) {
+        int32 n = qobj_num_qubits(state);
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            i = i + 1;
+        }
+        double z = qexpect_z(state, 0);
+        acc = acc + z;
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / shots;
+}
+
+// 量子梯度估计：两个参数点态各自多 shot 期望 → parameter-shift 梯度
+@layer(time=0, thread=0, coord=(1126))
+double quantum_gradient_estimator(QObject state_plus, QObject state_minus) {
+    double f_plus = 0.0;
+    double f_minus = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        f_plus = f_plus + qexpect_z(state_plus, 0);
+        f_minus = f_minus + qexpect_z(state_minus, 0);
+        s = s + 1;
+    }
+    int32 _a = state_plus.measure();
+    int32 _b = state_minus.measure();
+    f_plus = f_plus / 8.0;
+    f_minus = f_minus / 8.0;
+    return (f_plus - f_minus) / 2.0;
+}

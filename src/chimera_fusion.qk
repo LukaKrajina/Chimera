@@ -1,0 +1,28 @@
+// chimera_fusion.qk —— 超大型模型融合仲裁层
+//
+// 把 24 个组件的量子信号融合成最终决策增益。对应超大型模型的
+// 「输出头（output head）+ 融合层（fusion layer）」——四路信号
+// （认知 / 几何 / 因果 / 记忆）的融合。
+//
+// 融合不是「固定权重的线性拼接」，而是 Quark 真·玻尔兹曼原语的
+//       「层级软门控注意力」——认知（前向）、几何（曲率）、因果（逆因果回程）、
+//       记忆（holonomy 累积）四类信号两两玻尔兹曼软门控后分层融合，
+//       权重随信号幅值自适应（非硬编码 0.35/0.30/0.20/0.15），
+//       软饱和用 tanh 量化（真 tanh 非线性，非 clamp 线性）。
+
+// 四路信号融合：层级玻尔兹曼软门控（自适应权重，非固定线性）
+@layer(time=0, thread=0, coord=(70))
+double fusion_gain(double cognitive, double geometric, double causal, double memory_) {
+    // 第一层：认知/几何软门控 + 因果/记忆软门控
+    double cg = boltzmann2(cognitive, geometric, 1.0);
+    double cm = boltzmann2(causal, memory_, 1.0);
+    // 第二层：前向（认知·几何）/ 逆向（因果·记忆）软门控
+    return boltzmann2(cg, cm, 1.0);
+}
+
+// 融合后的非线性压缩（tanh 量化软饱和，非 clamp 线性）
+@layer(time=0, thread=0, coord=(71))
+double fusion_squash(double gain) {
+    // tanh_quantize：真 tanh 软饱和 + 8 位量化 → [−1,1]，映射到 [0,1]
+    return tanh_quantize(gain, 1.0, 8) * 0.5 + 0.5;
+}

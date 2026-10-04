@@ -1,0 +1,149 @@
+// chimera_gnn.qk —— 量子图神经网络（8 组件）
+
+// 图态编码：团纠缠（H 顶点叠加 + CNOT 边 → 图态）
+@layer(time=0, thread=0, coord=(1220))
+QObject graph_state_encode(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    int32 k = 0;
+    while (k < n) {
+        qgate_rz(state, k, theta);
+        k = k + 1;
+    }
+    return state;
+}
+
+// 消息传递：量子态聚合（环形 CNOT 传递邻居信息）
+@layer(time=0, thread=0, coord=(1221))
+QObject message_passing(QObject state, int32 rounds) {
+    int32 n = qobj_num_qubits(state);
+    int32 r = 0;
+    while (r < rounds) {
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(state, j, j + 1);
+            j = j + 1;
+        }
+        if (n > 1) {
+            qgate_cnot(state, n - 1, 0);
+        }
+        r = r + 1;
+    }
+    return state;
+}
+
+// 节点聚合：环行聚合邻居后读 ⟨Z⟩ 节点特征（非裸 ⟨Z⟩）
+@layer(time=0, thread=0, coord=(1222))
+double node_aggregation(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    if (n > 1) {
+        qgate_cnot(state, n - 1, 0);
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return acc / 8.0;
+}
+
+// 边注意力：多 shot 节点对态重叠（相似度）
+@layer(time=0, thread=0, coord=(1223))
+double edge_attention(QObject node_a, QObject node_b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(node_a, node_b);
+        s = s + 1;
+    }
+    int32 _a = node_a.measure();
+    int32 _b = node_b.measure();
+    return acc / 8.0;
+}
+
+// 图池化：测量丢弃节点（降维）
+@layer(time=0, thread=0, coord=(1224))
+QObject graph_pooling(QObject state) {
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// 图核：图随机游走核——两图各做环形游走后测态重叠（非裸保真度）
+@layer(time=0, thread=0, coord=(1225))
+double graph_kernel(QObject graph_a, QObject graph_b) {
+    int32 na = qobj_num_qubits(graph_a);
+    int32 nb = qobj_num_qubits(graph_b);
+    int32 i = 0;
+    while (i < na - 1) {
+        qgate_cnot(graph_a, i, i + 1);
+        i = i + 1;
+    }
+    if (na > 1) {
+        qgate_cnot(graph_a, na - 1, 0);
+    }
+    i = 0;
+    while (i < nb - 1) {
+        qgate_cnot(graph_b, i, i + 1);
+        i = i + 1;
+    }
+    if (nb > 1) {
+        qgate_cnot(graph_b, nb - 1, 0);
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(graph_a, graph_b);
+        s = s + 1;
+    }
+    int32 _a = graph_a.measure();
+    int32 _b = graph_b.measure();
+    return acc / 8.0;
+}
+
+// 社区检测：模块度——环内 ZZ 关联强度（非裸纠缠熵）
+@layer(time=0, thread=0, coord=(1226))
+double community_detection(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z;
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_cnot(state, 0, 1);
+        acc = acc + qexpect_z(state, 1);
+        qgate_cnot(state, 0, 1);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc;
+}
+
+// 节点嵌入：布洛赫方向编码 + 特征相位注入
+@layer(time=0, thread=0, coord=(1227))
+QObject node_embedding(double theta, double phi, double feature) {
+    auto state = basis_state(theta, phi, 0);
+    qgate_rz(state, 0, feature);
+    return state;
+}

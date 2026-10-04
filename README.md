@@ -19,6 +19,8 @@
 [![Top Language](https://img.shields.io/github/languages/top/LukaKrajina/Chimera?style=for-the-badge)](https://github.com/LukaKrajina/Chimera)
 [![Paradigm](https://img.shields.io/badge/Paradigm-Quantum_Chaotic_Meta--Cognition-6f42c1?style=for-the-badge)]()
 
+<img src="icons/banner.png" width="100%" alt="Chimera Logo">
+
 </div>
 
 > **重要声明**：本文中关于「量子混沌态」「意识随时间漂移」「情绪影响决策」等论述，
@@ -78,7 +80,15 @@ Busemeyer）所刻画的人类决策：叠加（犹豫）、测量（果断）�
 
 ---
 
-## 4. 架构：六大组件 + 一个闭环
+## 4. 架构：从六大组件到 256 组件
+
+> **演进说明**：Chimera 最初以「六大组件 + 一个闭环」描述其**意识核心**（下方架构图）。
+> 现已扩展到 **256 个组件**——在 25 个核心组件（Transformer 的量子对偶 + 意识内核）基础上，
+> 吸收 arXiv / Nature 前沿论文，新增 **231 个组件**，组织为 **29 个范式集群**（耗散 / MIPT /
+> 因果 / 几何 / 拓扑记忆 / QRC / QEC / 意识扩展 / 语言 / 优化器 / 路由 / 生成 / 鲁棒 / 多体 /
+> RL / 图网络 / 时序 / 信号 / 核方法 / 集成 / 元迁移 / 连续学习 / XAI / 神经符号 / QAOA /
+> 动力系统 / 信息论 / 压缩 / 聚类）。全部 256 组件的全融合见 `carla/chimera_drive.qk`
+> （全激活深度超级大模型）。下方保留原始的「六大组件」意识核心架构图。
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -175,21 +185,30 @@ Busemeyer）所刻画的人类决策：叠加（犹豫）、测量（果断）�
 Chimera/
 ├── README.md                        # 本文件（架构设计）
 ├── LICENSE                          # MIT 许可证
-├── src/
+├── THIRD_PARTY_NOTICES.md           # 第三方组件与素材许可声明（Quark / Pixabay 图片等）
+├── .gitignore                       # 过滤 AI 助手数据、生成物与缓存
+├── icons/                           # 项目图标（banner 等）
+├── assets/                          # 示例图片（Pixabay 素材：dog / cat / tree / car）
+├── src/                             # 256 组件（55 个 .qk 文件 + 1 个态射宏库）
+│   ├── chimera_morphs.qk            # ⭐ 态射宏库（morph 元编程：硬编码数值 → 语义态射）
 │   ├── chimera_consciousness.qk     # ② 混沌意识核（量子混沌态 + 情绪测量）
 │   ├── chimera_perception.qk        # ① 感知场（输入编码）
 │   ├── chimera_decision.qk          # ④ 决策引擎（情绪 × 证据强度 → 决策）
 │   ├── chimera_dream.qk             # ③ 演化世界 + ⑤ 几何优化器（做梦 + 改进 dt）
 │   ├── chimera_chaos.qk             # 混沌丰富度诊断（Lyapunov 指数，Loschmidt 回波）
 │   ├── chimera_metacognition.qk     # ⑥ 元认知核（认识错误 → 反思学习）
-│   └── chimera_core.qk              # 主循环（漂移 → 情绪 → 决策 → 反思 → 重置）
-└── examples/
-    ├── README.md                    # 示例说明（运行方法）
-    ├── chimera_vision.qk            # 应用示例：图像识别（mode==1）
-    ├── chimera_language.qk          # 应用示例：语言推理 NLI（mode==1）
-    └── component-demos/
-        ├── chimera_demo.qk              # 核心闭环端到端演示（自包含）
-        └── chimera_metacognition_demo.qk # 元认知端到端演示（自包含）
+│   ├── ...                          # 其余 19 个现有组件（Transformer 量子对偶）
+│   └── chimera_*.qk                 # 231 个新增组件（29 范式集群：耗散/MIPT/因果/几何/拓扑/QRC/QEC/意识扩展/语言/优化器/路由/生成/鲁棒/多体/RL/图/时序/信号/核/集成/元迁移/连续学习/XAI/神经符号/QAOA/动力/信息论/压缩/聚类）
+├── examples/                        # 应用示例与端到端演示
+│   ├── chimera_vision.qk            # 图像识别示例
+│   ├── chimera_language.qk          # 语言推理 NLI 示例
+│   └── component-demos/             # 自包含组件演示
+└── carla/                           # CARLA 自动驾驶集成（256 组件全融合驾驶大模型）
+    ├── README.md                    # CARLA 集成说明
+    ├── chimera_drive.qk             # 全激活深度超级大模型（4 分支 × 29 集群 × 4 周期）
+    ├── chimera_driveMoE.qk          # 稀疏 MoE 版（12 专家组）
+    ├── autopilot.py                 # CARLA 客户端（感知 → 决策 → 控制 → 反思）
+    └── quark_client.py              # Quark daemon 协议客户端
 ```
 
 ## 8. 落地状态
@@ -207,6 +226,8 @@ Chimera/
 | 认识错误 + 反思学习 | ✅ | `recognize_error`（量子预测误差征象）+ `reflect_and_learn`（征象振幅放大），`chimera_metacognition.qk` |
 | 元认知 demo | ✅ | `chimera_metacognition_demo.qk`（自包含，错误识别 → 反思收敛） |
 | 端到端 demo | ✅ | `chimera_demo.qk`（自包含，情绪态统计 + 策略学习） |
+| 256 组件扩展 | ✅ | 231 个新增组件（29 范式集群）落地，与 25 个现有组件合计 **256 组件**，全融合见 `carla/chimera_drive.qk` |
+| 态射宏（morph） | ✅ | `chimera_morphs.qk` 用 qk 的 `morph` 态射宏系统，把散落的硬编码数值（π/黄金比/白银比/shot 数/学习率等）抽象为 22 个语义态射 |
 
 > 依赖 Quark 最新版的量子特性：`qattention`（态重叠）、`qgate_*`（QObject 层门）、
 > `qexpect_z`（非破坏期望）、`qmeasure`（坍缩测量）、`qstate_entropy`（纠缠熵）、
@@ -224,6 +245,13 @@ Chimera/
 ## 9. 许可证
 
 本项目采用 [MIT License](./LICENSE)。
+
+本项目使用或参考了若干第三方组件与素材，包括：
+- **Quark 项目**（qk 语言与量子运行时，MIT License）——Chimera 全部组件以 qk 语言书写；
+- **Pixabay 图片素材**（`assets/` 下的 dog / cat / tree / car 四张示例图，
+  Pixabay Content License）。
+
+完整的第三方许可声明与致谢详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 > **许可精神**：Chimera 的「自我」是一个不断漂移、会犹豫、会反思的量子混沌态。
 > MIT 的「完全自由」正是这种开放意识的许可证对偶——任何人可自由使用、修改、合并、

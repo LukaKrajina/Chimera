@@ -1,0 +1,51 @@
+// chimera_qcnn.qk —— 量子卷积感知场（QCNN，Quantum Convolutional Neural Network）
+//
+// 用「环形 CNOT 纠缠 + 参数化 Rz」实现量子卷积核——CNOT 提取局部
+//       像素关联（卷积核），Rz 是可训练权重（对应经典 CNN 的卷积权重），
+//       对 encode_image 的振幅编码态做分层特征提取，替代直接振幅编码的粗糙特征。
+//
+
+// 量子卷积层：环形纠缠（卷积核）+ 参数化旋转（可训练权重）
+@layer(time=0, thread=0, coord=(26))
+QObject qcnn_conv(QObject feature, double theta) {
+    int32 n = qobj_num_qubits(feature);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(feature, i, i + 1);   // 局部纠缠 = 卷积核（相邻像素关联）
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(feature, j, theta);     // 参数化旋转 = 可训练卷积权重
+        j = j + 1;
+    }
+    return feature;
+}
+
+// 多层卷积前向：每层不同卷积核（theta + 0.1·l），逐层提取高阶特征
+@layer(time=0, thread=0, coord=(27))
+QObject qcnn_forward(QObject input, double theta, int32 layers) {
+    int32 l = 0;
+    while (l < layers) {
+        input = qcnn_conv(input, theta + 0.1 * l);
+        l = l + 1;
+    }
+    return input;
+}
+
+// 视觉特征提取：encode_image 振幅编码 + QCNN 卷积 → 高阶视觉特征态
+@layer(time=0, thread=0, coord=(28))
+QObject qcnn_feature(string img_path, int32 num_qubits, double theta, int32 layers) {
+    auto feature = encode_image(img_path, num_qubits);
+    feature = qcnn_forward(feature, theta, layers);
+    return feature;
+}
+
+// 量子池化层：测量丢弃第 0 个 qubit（降维），返回剩余特征态
+//    对应经典 CNN 的 max/average pooling —— 逐层降低特征维度、提取高层不变性。
+//    qmeasure 部分坍缩（测第 0 个 qubit），剩余 qubit 仍存活继续前向。
+@layer(time=0, thread=0, coord=(39))
+QObject qcnn_pool(QObject feature) {
+    int32 _ = qmeasure(feature, 0);   // 测量丢弃（池化降维）
+    return feature;                    // 返回剩余态（1..n-1 qubit）
+}

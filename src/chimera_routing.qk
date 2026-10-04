@@ -1,0 +1,133 @@
+// chimera_routing.qk —— 量子路由/注意力/门控
+
+// 量子路由器：叠加态同时走多路（H 门 → 多路叠加）
+@layer(time=0, thread=0, coord=(1100))
+QObject quantum_router(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    return state;
+}
+
+// 叠加路由：同时激活多专家（环形 CNOT + 相位 → 相干专家混合）
+@layer(time=0, thread=0, coord=(1101))
+QObject superposition_routing(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 干涉门控：多 shot 破坏性干涉消隐（重叠小 → 门控关闭）
+@layer(time=0, thread=0, coord=(1102))
+double interference_gating(QObject signal, QObject gate) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(signal, gate);
+        s = s + 1;
+    }
+    int32 _a = signal.measure();
+    int32 _b = gate.measure();
+    return acc / 8.0;
+}
+
+// 相位注意力：相对相位做注意力分数（相位差 → 注意力）
+@layer(time=0, thread=0, coord=(1103))
+double phase_attention(QObject query, QObject key, double phase_shift) {
+    int32 n = qobj_num_qubits(key);
+    if (n > 0) {
+        qgate_rz(key, 0, phase_shift);
+    }
+    double s = qattention(query, key);
+    int32 _a = query.measure();
+    int32 _b = key.measure();
+    return s;
+}
+
+// 纠缠门控：XX 奇偶关联（H 双 qubit + CNOT + Z）→ 门控权重
+@layer(time=0, thread=0, coord=(1104))
+double entanglement_gating(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    if (n < 2) {
+        double z = qexpect_z(state, 0);
+        int32 _ = state.measure();
+        if (z < 0.0) { z = -z; }
+        return z / (z + 1.0);
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_h(state, 0);
+        qgate_h(state, 1);
+        qgate_cnot(state, 0, 1);
+        acc = acc + qexpect_z(state, 1);
+        qgate_cnot(state, 0, 1);
+        qgate_h(state, 1);
+        qgate_h(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc / (acc + 1.0);
+}
+
+// 量子 top-k：振幅放大 + 测量选出最大分量
+@layer(time=0, thread=0, coord=(1105))
+QObject quantum_topk(QObject state, int32 rounds) {
+    int32 n = qobj_num_qubits(state);
+    int32 r = 0;
+    while (r < rounds) {
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            i = i + 1;
+        }
+        int32 _ = qmeasure(state, 0);
+        r = r + 1;
+    }
+    return state;
+}
+
+// 玻尔兹曼路由：score 编码态多 shot 期望 → 温度控稀疏度
+@layer(time=0, thread=0, coord=(1106))
+double boltzmann_router(double score, double temperature) {
+    auto state = basis_state(score * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}
+
+// 层级注意力：多尺度态重叠 + logsumexp 软融合
+@layer(time=0, thread=0, coord=(1107))
+double hierarchical_attention(double low, double mid, double high, double weight) {
+    auto s_low = basis_state(low * PI!(), 0.0, 0);
+    auto s_mid = basis_state(mid * PI!(), 0.0, 0);
+    auto s_high = basis_state(high * PI!(), 0.0, 0);
+    double o_lm = qattention(s_low, s_mid);
+    double o_mh = qattention(s_mid, s_high);
+    int32 _a = s_low.measure();
+    int32 _b = s_mid.measure();
+    int32 _c = s_high.measure();
+    double lse = logsumexp2(o_lm, o_mh, weight);
+    return 1.0 / (1.0 + lse);
+}

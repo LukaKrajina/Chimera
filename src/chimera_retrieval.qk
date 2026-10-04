@@ -1,0 +1,25 @@
+// chimera_retrieval.qk —— 量子检索（曲面体测地线距离检索 + 玻尔兹曼软门控）
+//
+// 对应现代 LLM 的 RAG（检索增强生成）。检索不是「向量内积相似度」，而是
+// 曲面体上的「测地线距离」——非欧空间的最近邻检索，评分用玻尔兹曼软匹配，
+// 门控用玻尔兹曼软阈值（非硬 0/1）。
+//
+// RAG 的向量内积（欧几里德相似度）利用 [测地线距离」+「玻尔兹曼
+//       软匹配」——非欧空间里层级结构天然被双曲距离捕获，检索从「内积」
+//       升级为「曲率感知的测地线最近邻」，门控从硬阈值升级为可微软阈值。
+
+// 检索评分：测地线距离的玻尔兹曼软匹配（距离越小评分越高，d=0 → 1）
+@layer(time=0, thread=0, coord=(64))
+double retrieval_score(double query, double key) {
+    double d = hyperbolic_distance(query, key);
+    if (d < 0.0) { d = 3.0; }
+    // 玻尔兹曼软匹配：2·σ(−d)（真玻尔兹曼分布，非 1/(1+d) 硬倒数）
+    return 2.0 * boltzmann2(1.0, 0.0, -d);
+}
+
+// 检索门控：玻尔兹曼软阈值（可微，非硬 0/1）
+@layer(time=0, thread=0, coord=(65))
+double retrieval_gate(double score, double threshold) {
+    // 玻尔兹曼软阈值：σ(β·(score−threshold))（score>threshold → 1，否则 → 0）
+    return boltzmann2(1.0, 0.0, 10.0 * (score - threshold));
+}

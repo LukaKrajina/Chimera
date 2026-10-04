@@ -1,6 +1,6 @@
 // chimera_vision.qk —— Chimera 图像识别示例（真实图像）
 //
-// 识别 4 类真实灰度图像（cat / dog / car / tree，8×8 PGM，assets/ 目录）。
+// 识别 4 类真实图像（cat / dog / car / tree，512×512 PNG，assets/ 目录）。
 // 输入与原型均用 encode_image(path, 6) 做 6-qubit 振幅编码（真实像素 → 态振幅），
 // 用量子注意力 qattention 与 4 个原型图像态做最近邻匹配，情绪策略调制置信度，
 // 元认知核认识错误并反思。
@@ -11,9 +11,8 @@
 //   chimera_dream.qk          —— improve_drift / learn_emotion_policy（⑤ 几何优化器）
 //   chimera_metacognition.qk  —— recognize_error / reflect_and_learn（⑥ 元认知核）
 //
-// 反思统一走 mode==0（reward 规则）：真实图像感知态是 6 qubit，而 learn_emotion_policy
-// 的判定态目前是单 qubit（basis_state），二者维度不匹配时 qattention 会静默失效，
-// 故图像任务用 mode==0 的 reward 规则（不依赖感知态维度）。 **0.7.0已修复，可mode = 1**
+// 反思统一走 mode==1（完整 QGT 自然梯度）：判定态 decision_state(θ, nq) 已对齐
+// 感知态维度（qobj_num_qubits），对 6 qubit 真实图像感知态有非零梯度。
 // 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12) 避免 E-TOP003。
 // 图像路径相对运行时 cwd（建议 cd 到 Chimera 目录后 qk run）。
 
@@ -35,12 +34,12 @@ int32 quark_main() {
     int32 t = 0;
     while (t < 80) {
         // ── 当前输入图像（真实类别 label 对应的文件路径）──
-        string image_file = "assets/cat.pgm";
+        string image_file = "assets/cat.png";
         route (label) {
-            path 0: { image_file = "assets/cat.pgm"; }
-            path 1: { image_file = "assets/dog.pgm"; }
-            path 2: { image_file = "assets/car.pgm"; }
-            path 3: { image_file = "assets/tree.pgm"; }
+            path 0: { image_file = "assets/cat.png"; }
+            path 1: { image_file = "assets/dog.png"; }
+            path 2: { image_file = "assets/car.png"; }
+            path 3: { image_file = "assets/tree.png"; }
         }
 
         // ── ① 感知场：真实图像 → 6-qubit 振幅编码 ──
@@ -64,10 +63,10 @@ int32 quark_main() {
         }
 
         // ── ③ 类别匹配：感知态与 4 个原型图像态的态重叠（6 qubit）──
-        auto p0 = encode_image("assets/cat.pgm", 6);
-        auto p1 = encode_image("assets/dog.pgm", 6);
-        auto p2 = encode_image("assets/car.pgm", 6);
-        auto p3 = encode_image("assets/tree.pgm", 6);
+        auto p0 = encode_image("assets/cat.png", 6);
+        auto p1 = encode_image("assets/dog.png", 6);
+        auto p2 = encode_image("assets/car.png", 6);
+        auto p3 = encode_image("assets/tree.png", 6);
         double s0 = qattention(perception, p0);
         double s1 = qattention(perception, p1);
         double s2 = qattention(perception, p2);
@@ -87,7 +86,7 @@ int32 quark_main() {
         }
         total = total + 1;
 
-        // ── ④ 反思（例行）：mode==0 reward 规则（不依赖感知态维度）──
+        // ── ④ 反思（例行）：mode==1 完整 QGT 自然梯度（判定态对齐感知态维度）──
         double reward = 0.0;
         if (accepted == 1) {
             if (pred == label) {
@@ -96,7 +95,7 @@ int32 quark_main() {
                 reward = -1.0;
             }
         }
-        policy = learn_emotion_policy(policy, emo, reward, perception, 0);
+        policy = learn_emotion_policy(policy, emo, reward, perception, 1);
 
         // ── ⑥ 元认知：认识错误 → 反思学习 ──
         double pred_angle = 0.0;
@@ -121,7 +120,7 @@ int32 quark_main() {
         // ── ⑤ 几何优化：漂移步长收敛到混沌边缘 ──
         dt = improve_drift(dt, target, 1);
 
-        // ── 消费量子对象（QLT 线性类型；perception 已由 learn_emotion_policy mode==0 归还）──
+        // ── 消费量子对象（QLT 线性类型）──
         int32 _p = perception.measure();
         int32 _q0 = p0.measure();
         int32 _q1 = p1.measure();

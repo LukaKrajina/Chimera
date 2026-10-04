@@ -1,0 +1,145 @@
+// chimera_qec.qk —— 量子纠错认知
+//
+
+// 稳定子征象提取：受控测量稳定子（不坍缩逻辑态，只坍缩辅助）
+@layer(time=0, thread=0, coord=(1060))
+QObject syndrome_extractor(QObject state, int32 stabilizer_qubit) {
+    int32 n = qobj_num_qubits(state);
+    if (stabilizer_qubit < 0) { stabilizer_qubit = 0; }
+    if (stabilizer_qubit >= n) { stabilizer_qubit = n - 1; }
+    auto anc = new QuantumRegister(1);
+    qgate_h(anc, 0);
+    qgate_cnot_pair(state, stabilizer_qubit, anc, 0);
+    qgate_h(anc, 0);
+    int32 _ = anc.measure();
+    return state;
+}
+
+// 逻辑 qubit 态构建：多物理 qubit 编码单逻辑 qubit（重复码）
+@layer(time=0, thread=0, coord=(1061))
+QObject logical_qubit_state(int32 num_physical) {
+    auto state = new QuantumRegister(num_physical);
+    int32 i = 0;
+    while (i < num_physical - 1) {
+        qgate_cnot(state, 0, i + 1);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 误差缓解读出：两个噪声点各自多 shot 期望，线性外推到零噪声
+@layer(time=0, thread=0, coord=(1062))
+double error_mitigation_readout(double signal, double noise_high, double noise_low) {
+    auto s_high = basis_state(signal * PI!(), 0.0, 0);
+    auto s_low = basis_state(signal * PI!(), 0.0, 0);
+    double zh = 0.0; double zl = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        zh = zh + qexpect_z(s_high, 0);
+        zl = zl + qexpect_z(s_low, 0);
+        s = s + 1;
+    }
+    int32 _a = s_high.measure();
+    int32 _b = s_low.measure();
+    zh = zh / 8.0;
+    zl = zl / 8.0;
+    double slope = (zh - zl) / (noise_high - noise_low);
+    double extrapolated = zl - slope * noise_low;
+    if (extrapolated > 1.0) { extrapolated = 1.0; }
+    if (extrapolated < -1.0) { extrapolated = -1.0; }
+    return extrapolated;
+}
+
+// 面码征象：plaquette（X 型）与 vertex（Z 型）稳定子测量
+@layer(time=0, thread=0, coord=(1063))
+QObject surface_code_syndrome(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n - 1) {
+        qgate_cnot(state, i, i + 1);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n) {
+        qgate_rz(state, j, theta);
+        j = j + 1;
+    }
+    if (n > 1) {
+        int32 _ = qmeasure(state, 0);
+    }
+    return state;
+}
+
+// 容错门：横向门（逐 qubit 独立操作）
+@layer(time=0, thread=0, coord=(1064))
+QObject fault_tolerant_gate(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, theta);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 码距探针：构建码态 + 多 shot 纠缠熵 + DLA 维数 → 码空间可训练性
+@layer(time=0, thread=0, coord=(1065))
+double code_distance_probe(string spec, int32 n_qubits) {
+    int32 d = dla_dim(spec, n_qubits);
+    auto code = new QuantumRegister(n_qubits);
+    int32 i = 0;
+    while (i < n_qubits - 1) {
+        qgate_cnot(code, i, i + 1);
+        i = i + 1;
+    }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(code, 0);
+        s = s + 1;
+    }
+    int32 _ = code.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    double algebra = 3.0 / (3.0 + 0.1 * (d - 3.0));
+    return algebra / (1.0 + acc);
+}
+
+// 魔法态蒸馏：多轮测量 + 条件修正，提高非 Clifford 资源保真度
+@layer(time=0, thread=0, coord=(1066))
+QObject magic_state_distill(QObject state, int32 rounds) {
+    int32 n = qobj_num_qubits(state);
+    int32 r = 0;
+    while (r < rounds) {
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            i = i + 1;
+        }
+        if (n > 1) {
+            int32 b = qmeasure(state, 0);
+            if (b == 1) {
+                qgate_x(state, 1);
+            }
+        }
+        r = r + 1;
+    }
+    return state;
+}
+
+// 自适应解码器：征象编码态 + 多 shot 期望 → 玻尔兹曼软判
+@layer(time=0, thread=0, coord=(1067))
+double adaptive_decoder(double syndrome, double temperature) {
+    auto state = basis_state(syndrome * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}

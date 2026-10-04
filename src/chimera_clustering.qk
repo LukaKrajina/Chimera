@@ -1,0 +1,120 @@
+// chimera_clustering.qk —— 量子聚类/无监督/异常
+
+// 量子 K-means：多 shot 点到质心的态重叠
+@layer(time=0, thread=0, coord=(1350))
+double quantum_kmeans(QObject sample, QObject centroid) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(sample, centroid);
+        s = s + 1;
+    }
+    int32 _a = sample.measure();
+    int32 _b = centroid.measure();
+    return acc / 8.0;
+}
+
+// 距离矩阵：多 shot 保真度距离
+@layer(time=0, thread=0, coord=(1351))
+double distance_matrix(QObject a, QObject b) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(a, b);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = a.measure();
+    int32 _b = b.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 质心更新：多 shot ⟨Z⟩ 质心特征
+@layer(time=0, thread=0, coord=(1352))
+double centroid_update(QObject cluster_members) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(cluster_members, 0);
+        s = s + 1;
+    }
+    int32 _ = cluster_members.measure();
+    return acc / 8.0;
+}
+
+// 量子 DBSCAN：多 shot 密度可达（重叠阈值）
+@layer(time=0, thread=0, coord=(1353))
+double quantum_dbscan(QObject p, QObject q) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(p, q);
+        s = s + 1;
+    }
+    int32 _a = p.measure();
+    int32 _b = q.measure();
+    return acc / 8.0;
+}
+
+// 异常检测：多 shot 偏离质心（保真度低 → 异常）
+@layer(time=0, thread=0, coord=(1354))
+double anomaly_detect(QObject sample, QObject normal) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(sample, normal);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = sample.measure();
+    int32 _b = normal.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 新异度分：多 shot 态重叠（新样本 → 低重叠）
+@layer(time=0, thread=0, coord=(1355))
+double novelty_score(QObject sample, QObject known) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(sample, known);
+        s = s + 1;
+    }
+    int32 _a = sample.measure();
+    int32 _b = known.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 谱聚类：图 Laplacian 的 ⟨X⟩（横向场，对应 Fiedler 特征）
+@layer(time=0, thread=0, coord=(1356))
+double spectral_cluster(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        qgate_h(state, 0);
+        acc = acc + qexpect_z(state, 0);
+        qgate_h(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc / (acc + 1.0);
+}
+
+// 量子高斯混合：score 编码态多 shot 期望 → 玻尔兹曼软分配
+@layer(time=0, thread=0, coord=(1357))
+double gmm_quantum(double score, double temperature) {
+    auto state = basis_state(score * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return boltzmann2(acc, 0.0, 1.0 / temperature);
+}

@@ -1,0 +1,63 @@
+// chimera_robot_demo.qk —— Chimera 机器人大模型变体端到端演示
+//
+// 把五个组件（含完整化后的函数）串成完整机器人认知链路（vedaRos 可采用的 Chimera 变体）：
+//   ① QCNN —— 量子卷积感知：卷积（qcnn_conv）+ 池化（qcnn_pool）
+//   ② LVM  —— 量子视觉序列：自回归预测下一帧（predict_next_frame）+ 时序一致性
+//   ③ World —— 混沌世界模型：动作条件演化 + 有限差分梯度优化 dt
+//   ④ Imagine —— 想象规划：想象 rollout + GRPO 组相对优势选优
+//   ⑤ QRL  —— 量子强化决策：值函数 + parameter-shift 策略梯度
+//
+// 运行：cd Chimera 后 qk run examples/chimera_robot_demo.qk
+
+include "../src/chimera_world.qk";
+include "../src/chimera_qcnn.qk";
+include "../src/chimera_lvm.qk";
+include "../src/chimera_imagine.qk";
+include "../src/chimera_qrl.qk";
+
+@layer(time=0, thread=0, coord=(40))
+int32 quark_main() {
+    double theta = 0.5;          // QCNN 卷积权重
+    double dt = 0.6;             // 世界模型漂移步长
+    double policy_theta = 0.5;   // QRL 策略参数
+
+    // ── ② LVM：时序一致性（两个独立帧）+ 自回归预测（原地演化）──
+    auto frame1 = encode_frame("assets/cat.png", 6);
+    auto frame2 = encode_frame("assets/dog.png", 6);
+    double coherence = temporal_coherence(frame1, frame2);   // 消费两个独立帧
+    auto frame3 = encode_frame("assets/cat.png", 6);
+    frame3 = predict_next_frame(frame3, 0.4);   // 自回归：原地演化到下一帧（新增）
+    int32 _f3 = frame3.measure();               // 消费
+
+    int32 t = 0;
+    while (t < 20) {
+        // ── ① QCNN：卷积 + 池化降维 ──
+        auto feature = qcnn_feature("assets/cat.png", 6, theta, 2);
+        feature = qcnn_pool(feature);                  // 池化（新增）
+
+        // ── ③ World：动作条件演化 ──
+        feature = world_step(feature, t, dt);
+
+        // ── ⑤ QRL：值函数 + parameter-shift 策略梯度 ──
+        double value = qrl_value(feature);             // 消费 feature
+        double grad = qrl_policy_gradient(value, 0.3); // parameter-shift 梯度（新增）
+        policy_theta = qrl_update(policy_theta, grad, 0.0);
+
+        // ── ④ Imagine：两条想象轨迹 GRPO 选优 ──
+        auto dream1 = world_state(6);
+        dream1 = imagine_trajectory(dream1, t, 3, dt);
+        double q1 = trajectory_quality(dream1);        // 消费 dream1
+        auto dream2 = world_state(6);
+        dream2 = imagine_trajectory(dream2, t + 1, 3, dt);
+        double q2 = trajectory_quality(dream2);        // 消费 dream2
+        int32 best = grpo_select(q1, q2);              // GRPO 选优（新增）
+
+        // ── ③ World：有限差分梯度优化 dt（新增）──
+        dt = improve_world_grad(dt, 0.6, 0.4);
+
+        t = t + 1;
+    }
+
+    qk_sys_logi(1, 20);
+    return 20;
+}

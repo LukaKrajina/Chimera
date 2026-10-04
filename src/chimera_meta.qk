@@ -1,0 +1,118 @@
+// chimera_meta.qk —— 量子元学习与迁移
+
+// 量子 MAML：内外循环梯度编码态重叠调制的双层更新
+@layer(time=0, thread=0, coord=(1270))
+double maml_quantum(double theta, double inner_grad, double meta_grad, double lr_inner, double lr_meta) {
+    auto inner_state = basis_state(inner_grad * PI!(), 0.0, 0);
+    auto meta_state = basis_state(meta_grad * PI!(), 0.0, 0);
+    double overlap = qattention(inner_state, meta_state);
+    int32 _a = inner_state.measure();
+    int32 _b = meta_state.measure();
+    double theta_prime = theta - lr_inner * inner_grad;
+    return theta_prime - lr_meta * meta_grad * (0.5 + overlap);
+}
+
+// 元初始化：基础/偏移编码态重叠调制的快速适应起点
+@layer(time=0, thread=0, coord=(1271))
+double meta_init(double base, double task_shift) {
+    auto b_state = basis_state(base * PI!(), 0.0, 0);
+    auto t_state = basis_state(task_shift * PI!(), 0.0, 0);
+    double overlap = qattention(b_state, t_state);
+    int32 _a = b_state.measure();
+    int32 _b = t_state.measure();
+    return (base + task_shift) * (0.5 + overlap);
+}
+
+// 迁移特征：冻结 + 微调（相位扰动 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1272))
+QObject transfer_feature(QObject state, double fine_tune) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, fine_tune * 0.1 * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 域适应：多 shot 源/目标域分布对齐（保真度）
+@layer(time=0, thread=0, coord=(1273))
+double domain_adapt(QObject source, QObject target) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(source, target);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = source.measure();
+    int32 _b = target.measure();
+    return acc / 8.0;
+}
+
+// 小样本编码：少量样本量子态编码 + 参数化相位
+@layer(time=0, thread=0, coord=(1274))
+QObject few_shot_encode(string support_text, double theta) {
+    auto state = encode_amplitudes(support_text, 2);
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    return state;
+}
+
+// 学会学习：梯度编码态多 shot 期望 → 谱隙调制学习率
+@layer(time=0, thread=0, coord=(1275))
+double learning_to_learn(double grad, double gap) {
+    if (gap < 0.0) { gap = 0.0; }
+    auto state = basis_state(grad * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    double lr = gap / (gap + 0.1);
+    return lr * acc;
+}
+
+// 超网络：生成权重相位（相位 = 权重 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1276))
+QObject hypernetwork(QObject state, double weight_phase) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, weight_phase * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 任务嵌入：布洛赫方向编码任务身份 + 特征相位
+@layer(time=0, thread=0, coord=(1277))
+QObject task_embedding(double theta, double phi, double task_id) {
+    auto state = basis_state(theta, phi, 0);
+    qgate_rz(state, 0, task_id);
+    return state;
+}

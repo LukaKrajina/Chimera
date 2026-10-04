@@ -1,0 +1,140 @@
+// chimera_qaoa.qk —— 量子搜索与优化 QAOA
+
+// Grover 振幅放大：Oracle 翻转 + 扩散算子
+@layer(time=0, thread=0, coord=(1310))
+QObject grover_amplify(QObject state, int32 rounds) {
+    int32 n = qobj_num_qubits(state);
+    int32 r = 0;
+    while (r < rounds) {
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            qgate_x(state, i);
+            i = i + 1;
+        }
+        int32 j = 0;
+        while (j < n - 1) {
+            qgate_cnot(state, j, j + 1);
+            j = j + 1;
+        }
+        int32 k = 0;
+        while (k < n) {
+            qgate_x(state, k);
+            qgate_h(state, k);
+            k = k + 1;
+        }
+        r = r + 1;
+    }
+    return state;
+}
+
+// QAOA 层：成本酉（Rz）+ 混合酉（X）
+@layer(time=0, thread=0, coord=(1311))
+QObject qaoa_layer(QObject state, double gamma, double beta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, gamma);
+        qgate_h(state, i);
+        qgate_rz(state, i, beta);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// MaxCut 能量：多 shot −⟨Z⟩（最小化能量 = 最大化切割）
+@layer(time=0, thread=0, coord=(1312))
+double maxcut_energy(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    return -acc / 8.0;
+}
+
+// 混合哈密顿量：X 驱动（隧穿探索）
+@layer(time=0, thread=0, coord=(1313))
+QObject mixing_hamiltonian(QObject state, double beta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, beta);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 成本景观：多 shot ⟨Z⟩ + tanh 非线性代价
+@layer(time=0, thread=0, coord=(1314))
+double cost_landscape(QObject state) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return tanh_quantize(acc, 1.0, 8);
+}
+
+// 绝热 QAOA：慢变插值（混合 → 成本）
+@layer(time=0, thread=0, coord=(1315))
+QObject adiabatic_qaoa(QObject state, double t, double total_time) {
+    double s = t / total_time;
+    if (s > 1.0) { s = 1.0; }
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, (1.0 - s) * 0.5);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 约束惩罚：违反量编码态多 shot 期望 → 软惩罚
+@layer(time=0, thread=0, coord=(1316))
+double constraint_penalty(double violation, double penalty_weight) {
+    auto state = basis_state(violation * PI!(), 0.0, 0);
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    return penalty_weight * surrogate(acc, 0.0, 1.0);
+}
+
+// 解多样性：各 qubit ⟨Z⟩ 的跨 qubit 方差（输出态多样性）
+@layer(time=0, thread=0, coord=(1317))
+double solution_diversity(QObject state) {
+    int32 n = qobj_num_qubits(state);
+    double sum = 0.0;
+    double sumsq = 0.0;
+    int32 i = 0;
+    while (i < n) {
+        double z = qexpect_z(state, i);
+        sum = sum + z;
+        sumsq = sumsq + z * z;
+        i = i + 1;
+    }
+    int32 _ = state.measure();
+    double mean = sum / n;
+    double variance = sumsq / n - mean * mean;
+    if (variance < 0.0) { variance = 0.0; }
+    return variance;
+}

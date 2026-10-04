@@ -1,0 +1,121 @@
+// chimera_dynamics.qk —— 量子动力系统
+
+// Koopman 算子：可观测量的线性推进（量子态演化算子）
+@layer(time=0, thread=0, coord=(1320))
+QObject koopman_operator(QObject state, double dt) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, dt);
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 哈密顿流：正则演化（辛结构）
+@layer(time=0, thread=0, coord=(1321))
+QObject hamiltonian_flow(QObject state, double dt) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, dt * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// Lyapunov 谱：多 shot 邻近态衰减
+@layer(time=0, thread=0, coord=(1322))
+double lyapunov_spectrum(QObject psi, QObject psi_perturbed) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        double f = qstate_fidelity(psi, psi_perturbed);
+        if (f < 0.0) { f = 0.0; }
+        acc = acc + f;
+        s = s + 1;
+    }
+    int32 _a = psi.measure();
+    int32 _b = psi_perturbed.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 吸引子嵌入：相空间重构（相位编码 + 环形纠缠 + tanh 非线性）
+@layer(time=0, thread=0, coord=(1323))
+QObject attractor_embed(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    double act = qexpect_z(state, 0);
+    double nl = tanh_quantize(act, 1.0, 8);
+    qgate_rz(state, 0, nl * QUARTER_PI!());
+    return state;
+}
+
+// 分岔探针：谱隙编码态重叠调制的突变检测
+@layer(time=0, thread=0, coord=(1324))
+double bifurcation_probe(double gap_prev, double gap_curr) {
+    auto s_prev = basis_state(gap_prev * PI!(), 0.0, 0);
+    auto s_curr = basis_state(gap_curr * PI!(), 0.0, 0);
+    double overlap = qattention(s_prev, s_curr);
+    int32 _a = s_prev.measure();
+    int32 _b = s_curr.measure();
+    double d = gap_curr - gap_prev;
+    if (d < 0.0) { d = -d; }
+    return d * (0.5 + overlap);
+}
+
+// 不动点搜索：x/f(x) 编码态重叠调制的迭代逼近
+@layer(time=0, thread=0, coord=(1325))
+double fixed_point_finder(double x, double f_x, double lr) {
+    auto x_state = basis_state(x * PI!(), 0.0, 0);
+    auto f_state = basis_state(f_x * PI!(), 0.0, 0);
+    double overlap = qattention(x_state, f_state);
+    int32 _a = x_state.measure();
+    int32 _b = f_state.measure();
+    double residual = f_x - x;
+    double grad = surrogate(residual, 0.0, 1.0);
+    return (x + lr * grad) * (0.5 + overlap);
+}
+
+// Poincaré 截面：周期采样（测量 + 相位）
+@layer(time=0, thread=0, coord=(1326))
+QObject poincare_section(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta);
+        i = i + 1;
+    }
+    int32 _ = qmeasure(state, 0);
+    return state;
+}
+
+// 极限环：多 shot 周期轨道重叠
+@layer(time=0, thread=0, coord=(1327))
+double limit_cycle(QObject t0, QObject t_period) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(t0, t_period);
+        s = s + 1;
+    }
+    int32 _a = t0.measure();
+    int32 _b = t_period.measure();
+    return acc / 8.0;
+}

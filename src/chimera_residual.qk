@@ -1,0 +1,30 @@
+// chimera_residual.qk —— 量子残差连接（曲面体测地线一步 + 平行传输）
+//
+// 对应 Transformer 的 Residual Connection（x + f(x)）。
+// 残差不是「向量直和」，而是曲面体上沿测地线的一步：
+//   x' = exp_x(α · f(x))（指数映射，从切空间回到流形）。
+//
+// 注：f(x) 作为「切向量」，其长度 = x 与 f(x) 的测地线距离 d（由调用方用
+//     内置函数 geodesic_distance 借用计算后传入）。本组件只消费 x（move），
+//     沿测地线走 α 步（指数映射）+ 环形 CNOT（平行传输）后 move 返回。
+//
+// 残差的「加」用「测地线移动」+「平行传输」——残差天然保持在
+//       流形上，不会像欧几里德直和那样「离开曲面」，且残差在 qubit 间
+//       平行传输（环形 CNOT）保持关联。
+
+// 残差一步：沿测地线走 α 步（指数映射）+ 环形 CNOT（平行传输）
+@layer(time=0, thread=0, coord=(24))
+QObject residual_step(QObject x, double d, double alpha) {
+    int32 n = qobj_num_qubits(x);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(x, i, alpha * d);         // 指数映射离散化（测地线一步）
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(x, j, j + 1);           // 平行传输（残差沿测地线的关联）
+        j = j + 1;
+    }
+    return x;
+}

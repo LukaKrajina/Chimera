@@ -1,0 +1,29 @@
+// chimera_optimizer.qk —— 量子自适应优化器（曲面体测地线流 + 曲率调制的 Adam）
+//
+// 对应 Transformer 的 Adam（动量 + 二阶矩自适应学习率）。优化不是「欧几里德
+// 梯度下降」，而是曲面体上的「测地线流」——沿 Fubini-Study 测地线下降，
+// 学习率由曲率（度规）自适应调制。
+//
+// Adam 的完整语义下沉到 Quark 原语——
+//   • 一阶矩 m（动量）= 测地线流的惯性（沿测地线切向量的累积）
+//   • 二阶矩 v = 曲率（hyperbolic_metric，度规大的地方曲率尖 → lr 小）
+//   • 偏差校正 m/(1−β²)：一阶矩的偏差校正（Adam 的 bias correction）
+//   • 混合界（polymer_mix_bound）：收敛时间上界 → 步长缩放
+
+// 自适应优化一步：曲率调制的测地线步长（Adam 动量 + 偏差校正 + 二阶矩的量子版）
+@layer(time=0, thread=0, coord=(68))
+double optimize_step(double grad, double momentum, double beta) {
+    // 一阶矩：动量更新（测地线惯性）
+    double m = beta * momentum + (1.0 - beta) * grad;
+    // 二阶矩：曲率（度规）作为梯度的二阶统计（Adam 的 v 的量子版）
+    double g = hyperbolic_metric(grad);
+    if (g > 100.0) { g = 100.0; }
+    // 偏差校正：一阶矩 m/(1−β²)（Adam bias correction）
+    double m_hat = m / (1.0 - beta * beta);
+    // 曲率调制学习率：1/(1+g)（1/√v 的量子版，度规大 → lr 小）
+    double lr = 1.0 / (1.0 + g);
+    // 混合界步长缩放：收敛时间上界（polymer_mix_bound）→ 慢混合 → 小步长
+    double mix = polymer_mix_bound(2.0, 0.1);
+    double scale = 1.0 / (1.0 + 0.01 * mix);
+    return lr * m_hat * scale;
+}

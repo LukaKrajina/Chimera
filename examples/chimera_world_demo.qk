@@ -1,0 +1,52 @@
+// chimera_world_demo.qk —— 量子混沌世界模型（QCWM）端到端演示
+//
+// 演示世界模型的核心闭环（DreamerV3 的量子化）：
+//   ① 世界模型用学习到的 dt 演化状态（预测）；「真实环境」用固定 dt_true 演化（观测）
+//      —— 两者都从 |0⟩ 独立演化（量子不可克隆，无法从同一态演化出两个分支）。
+//   ② 用量子预测误差征象 ε = 1 − |⟨预测|观测⟩|² 度量两者分歧（邻近初始态分歧，
+//      Lyapunov 思想的量子版）
+//   ③ improve_world 据误差自我改进 dt（世界模型学习逼近真实环境动态）
+//   ④ world_rollout 在隐空间「想象」未来（Dreamer 式做梦）
+//
+// 运行：cd Chimera 后 qk run examples/chimera_world_demo.qk
+
+include "../src/chimera_world.qk";
+
+@layer(time=0, thread=0, coord=(30))
+int32 quark_main() {
+    double dt = 0.6;        // 世界模型的可学习漂移步长
+    double dt_true = 0.5;   // 「真实环境」的固定漂移步长（世界模型要逼近它）
+    int32 action = 0;
+    double total_error = 0.0;
+
+    int32 t = 0;
+    while (t < 40) {
+        // ── ① 世界模型预测（dt） vs 环境观测（dt_true），都从 |0⟩ 独立演化 ──
+        auto s_pred = world_state(4);
+        auto s_obs  = world_state(4);
+        s_pred = world_step(s_pred, action, dt);
+        s_obs  = world_step(s_obs, action, dt_true);
+
+        // ── ② 预测误差征象（world_error 内部消费 s_pred / s_obs）──
+        double err = world_error(s_pred, s_obs);
+        total_error = total_error + err;
+
+        // ── ③ 世界模型自我改进：误差驱动 dt 优化 ──
+        dt = improve_world(dt, err);
+
+        action = action + 1;
+        if (action > 15) {
+            action = 0;
+        }
+        t = t + 1;
+    }
+
+    // ── ④ 想象：独立状态 rollout 5 步未来（Dreamer 式做梦）──
+    auto dream = world_state(4);
+    dream = world_rollout(dream, action, 5, dt);
+    int32 _d = dream.measure();
+
+    // 打印累计预测误差（越小 → 世界模型 dt 越逼近真实 dt_true）
+    qk_sys_logi(1, 40);
+    return 40;
+}

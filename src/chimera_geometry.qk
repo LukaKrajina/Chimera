@@ -1,0 +1,147 @@
+// chimera_geometry.qk —— 几何学习流（9 组件）
+
+// Berry 相位层：循环绝热路径积累几何相位
+@layer(time=0, thread=0, coord=(1030))
+QObject berry_phase_layer(QObject state, double theta, int32 cycles) {
+    int32 n = qobj_num_qubits(state);
+    int32 c = 0;
+    while (c < cycles) {
+        int32 i = 0;
+        while (i < n) {
+            qgate_h(state, i);
+            qgate_rz(state, i, theta);
+            qgate_h(state, i);
+            i = i + 1;
+        }
+        c = c + 1;
+    }
+    return state;
+}
+
+// Berry 曲率场：4 个相邻参数点分别制备态，多 shot 采样态重叠的反对称组合
+@layer(time=0, thread=0, coord=(1031))
+double berry_curvature_field(double theta, double phi, double dtheta, double dphi) {
+    auto s_pp = basis_state(theta + dtheta, phi + dphi, 0);
+    auto s_pm = basis_state(theta + dtheta, phi - dphi, 0);
+    auto s_mp = basis_state(theta - dtheta, phi + dphi, 0);
+    auto s_mm = basis_state(theta - dtheta, phi - dphi, 0);
+    double o_pp = qattention(s_pp, s_pm);
+    double o_pm = qattention(s_pm, s_mm);
+    double o_mp = qattention(s_mp, s_mm);
+    double o_mm = qattention(s_mm, s_pp);
+    int32 _a = s_pp.measure();
+    int32 _b = s_pm.measure();
+    int32 _c = s_mp.measure();
+    int32 _d = s_mm.measure();
+    double f = (o_pp - o_pm) - (o_mp - o_mm);
+    if (f < 0.0) { f = -f; }
+    return f * 0.5;
+}
+
+// Fubini-Study 度量：多 shot 采样相邻态重叠距离
+@layer(time=0, thread=0, coord=(1032))
+double fubini_study_metric(QObject psi, QObject psi_plus) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(psi, psi_plus);
+        s = s + 1;
+    }
+    int32 _a = psi.measure();
+    int32 _b = psi_plus.measure();
+    return 1.0 - acc / 8.0;
+}
+
+// 测地线平行传输：沿测地线把切向量平行搬运
+@layer(time=0, thread=0, coord=(1033))
+QObject geodesic_transport(QObject state, double step) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, step * (1.0 + 0.1 * i));
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    return state;
+}
+
+// 自然梯度步：θ − lr · G⁺ · ∇L（Fubini-Study 度量伪逆）
+@layer(time=0, thread=0, coord=(1034))
+double natural_gradient_step(double theta, double grad, double metric) {
+    double g = metric;
+    if (g < 0.000001) { g = 0.000001; }
+    double new_theta = theta - 0.05 * (grad / g);
+    if (new_theta < -1.0) { new_theta = -1.0; }
+    if (new_theta > 1.0) { new_theta = 1.0; }
+    return new_theta;
+}
+
+// 量子度量张量（QGT）：多 shot 采样 FS 度量 / 步长²
+@layer(time=0, thread=0, coord=(1035))
+double quantum_metric_tensor(QObject psi, QObject psi_plus, double h) {
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qattention(psi, psi_plus);
+        s = s + 1;
+    }
+    int32 _a = psi.measure();
+    int32 _b = psi_plus.measure();
+    return (1.0 - acc / 8.0) / (h * h);
+}
+
+// 和乐环：闭合回路的几何相位累积（循环 CNOT 编织闭环 + 相位）
+@layer(time=0, thread=0, coord=(1036))
+QObject holonomy_loop(QObject state, double theta) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_rz(state, i, theta);
+        i = i + 1;
+    }
+    int32 j = 0;
+    while (j < n - 1) {
+        qgate_cnot(state, j, j + 1);
+        j = j + 1;
+    }
+    if (n > 1) {
+        qgate_cnot(state, n - 1, 0);
+    }
+    return state;
+}
+
+// 辛流：哈密顿流（H 与 Rz 交替 = 相空间的正则演化）
+@layer(time=0, thread=0, coord=(1037))
+QObject symplectic_flow(QObject state, double dt) {
+    int32 n = qobj_num_qubits(state);
+    int32 i = 0;
+    while (i < n) {
+        qgate_h(state, i);
+        qgate_rz(state, i, dt * HALF_PI!());
+        qgate_h(state, i);
+        i = i + 1;
+    }
+    return state;
+}
+
+// 曲率正则：x 编码态 + 度规加权多 shot 期望 → 曲率正则项
+@layer(time=0, thread=0, coord=(1038))
+double curvature_regularizer(double x) {
+    auto state = basis_state(x * PI!(), 0.0, 0);
+    double g = hyperbolic_metric(x);
+    if (g > 100.0) { g = 100.0; }
+    double acc = 0.0;
+    int32 s = 0;
+    while (s < 8) {
+        acc = acc + qexpect_z(state, 0);
+        s = s + 1;
+    }
+    int32 _ = state.measure();
+    acc = acc / 8.0;
+    if (acc < 0.0) { acc = -acc; }
+    return acc * g / (1.0 + g);
+}

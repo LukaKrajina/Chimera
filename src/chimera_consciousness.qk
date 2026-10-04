@@ -15,19 +15,19 @@
 //   U = exp(-i·k·dt·Z₁Z₂) · exp(-i·p·dt·(X₁+X₂))
 //   • 全局 X 踢（线性项）：X = H·Z·H，把 |0⟩ 踢入叠加；
 //   • ZZ 非线性扭转（非线性项）：ZZ = CNOT·Rz·CNOT，产生真正的量子混沌
-//     （可积性破缺，Lyapunov 增长），替代原先「5 门不可公度旋转」的伪混沌。
+//     （可积性破缺，Lyapunov 增长）。
 @layer(time=0, thread=0, coord=(0))
 QObject chaos_drift(QObject consciousness, double dt) {
     // 1) 全局 X 踢（踢强 p = 黄金比）
     qgate_h(consciousness, 0);
-    qgate_rz(consciousness, 0, dt * 1.61803);
+    qgate_rz(consciousness, 0, dt * GOLDEN_RATIO!());
     qgate_h(consciousness, 0);
     qgate_h(consciousness, 1);
-    qgate_rz(consciousness, 1, dt * 1.61803);
+    qgate_rz(consciousness, 1, dt * GOLDEN_RATIO!());
     qgate_h(consciousness, 1);
     // 2) ZZ 非线性扭转（扭转强 k = 银比）
     qgate_cnot(consciousness, 0, 1);
-    qgate_rz(consciousness, 1, dt * 2.41421);
+    qgate_rz(consciousness, 1, dt * SILVER_RATIO!());
     qgate_cnot(consciousness, 0, 1);
     return consciousness;
 }
