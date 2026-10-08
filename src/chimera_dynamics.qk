@@ -42,8 +42,6 @@ double lyapunov_spectrum(QObject psi, QObject psi_perturbed) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = psi.measure();
-    int32 _b = psi_perturbed.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -115,7 +113,5 @@ double limit_cycle(QObject t0, QObject t_period) {
         acc = acc + qattention(t0, t_period);
         s = s + 1;
     }
-    int32 _a = t0.measure();
-    int32 _b = t_period.measure();
     return acc / 8.0;
 }

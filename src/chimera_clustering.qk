@@ -9,8 +9,6 @@ double quantum_kmeans(QObject sample, QObject centroid) {
         acc = acc + qattention(sample, centroid);
         s = s + 1;
     }
-    int32 _a = sample.measure();
-    int32 _b = centroid.measure();
     return acc / 8.0;
 }
 
@@ -25,8 +23,6 @@ double distance_matrix(QObject a, QObject b) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = a.measure();
-    int32 _b = b.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -39,7 +35,6 @@ double centroid_update(QObject cluster_members) {
         acc = acc + qexpect_z(cluster_members, 0);
         s = s + 1;
     }
-    int32 _ = cluster_members.measure();
     return acc / 8.0;
 }
 
@@ -52,8 +47,6 @@ double quantum_dbscan(QObject p, QObject q) {
         acc = acc + qattention(p, q);
         s = s + 1;
     }
-    int32 _a = p.measure();
-    int32 _b = q.measure();
     return acc / 8.0;
 }
 
@@ -68,8 +61,6 @@ double anomaly_detect(QObject sample, QObject normal) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = sample.measure();
-    int32 _b = normal.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -82,8 +73,6 @@ double novelty_score(QObject sample, QObject known) {
         acc = acc + qattention(sample, known);
         s = s + 1;
     }
-    int32 _a = sample.measure();
-    int32 _b = known.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -98,7 +87,6 @@ double spectral_cluster(QObject state) {
         qgate_h(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc / (acc + 1.0);

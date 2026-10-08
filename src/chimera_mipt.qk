@@ -45,7 +45,6 @@ double entanglement_transition_probe(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z;
     }
@@ -59,7 +58,6 @@ double entanglement_transition_probe(QObject state) {
         qgate_cnot(state, cut - 1, cut);   // CNOT 自逆还原
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;
@@ -87,7 +85,6 @@ double area_law_estimator(QObject state, double boundary_size, double volume_siz
         s = s + e;
         sh = sh + 1;
     }
-    int32 _ = state.measure();
     s = s / shots;
     double area_ratio = s / (boundary_size + 0.001);
     double vol_ratio = s / (volume_size + 0.001);
@@ -105,8 +102,6 @@ double teleportation_entropy(QObject a, QObject b) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = a.measure();
-    int32 _b = b.measure();
     return 1.0 - acc / 8.0;
 }
 

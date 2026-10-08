@@ -1,0 +1,102 @@
+// chimera_metrics_bench.qk —— Chimera 的 AI 指标 / 基准测试 (vs Transformer 对照组)
+//
+// 三个指标与 benchmark/transformer_baseline.py 中的指标一一对应:
+//   1) entropy           : 内部状态多样性 (Chimera=shannon4 采样分布熵, Transformer=attention 熵)
+//   2) setpoint_converge : 元认知设定点自适应收敛 (Chimera=improve_drift, Transformer=温度调节)
+//   3) error_detect      : 预测误差识别准确率 (Chimera=recognize_error, Transformer=置信度门控)
+//
+// 输出协议: 先打印 "METRIC <name>", 下一行打印 *1000 缩放的整型值,
+//   两者都出现在 daemon 的 runtime.log ([QCOS:WARN ] 前缀) 中。
+
+include "../src/chimera_morphs.qk";
+include "../src/chimera_consciousness.qk";
+include "../src/chimera_decision.qk";
+include "../src/chimera_dream.qk";
+include "../src/chimera_metacognition.qk";
+include "../src/chimera_chaos.qk";
+
+@layer(time=0, thread=0, coord=(12))
+int32 quark_main() {
+    // ---------- 指标 1: 内部状态分布熵 ----------
+    // 64 次采样: dt=0.8 漂移 8 步后测 2-qubit 输出, shannon4(计数)
+    // (探查: dt=0.8/steps=8 处于混沌边缘, 4 桶分布较均匀, S≈1.21 nats)
+    int32 c0 = 0;
+    int32 c1 = 0;
+    int32 c2 = 0;
+    int32 c3 = 0;
+    int32 t = 0;
+    while (t < 64) {
+        auto reg = new QuantumRegister(2);
+        int32 s = 0;
+        while (s < 8) {
+            reg = chaos_drift(reg, 0.8);
+            s = s + 1;
+        }
+        int32 b0 = qmeasure(reg, 0);
+        int32 b1 = qmeasure(reg, 1);
+        int32 st = b0 * 2 + b1;
+        if (st == 0) { c0 = c0 + 1; }
+        if (st == 1) { c1 = c1 + 1; }
+        if (st == 2) { c2 = c2 + 1; }
+        if (st == 3) { c3 = c3 + 1; }
+        t = t + 1;
+    }
+    double ent = shannon4(c0, c1, c2, c3);
+    qk_sys_log(1, "METRIC chimera_entropy");
+    int32 ent_scaled = ent * 1000.0;
+    qk_sys_logi(1, ent_scaled);
+
+    // ---------- 指标 2: 设定点自适应 (dream-RSI) ----------
+    // 目标 quality = 0.5 (qexpect_z 空间), 从 dt=0.3 出发,
+    // 记录 improve_drift(mode=0 梯度) 迭代到 |quality-target|<0.05 的步数,
+    // 以及最终误差。
+    double dt = 0.3;
+    double target = 0.5;
+    int32 iters = 0;
+    double err = 9.9;
+    int32 it = 0;
+    while (it < 30) {
+        auto st = dream_state(dt);
+        double q = quality_of(st);
+        int32 _m = qmeasure(st, 0);
+        err = q - target;
+        if (err < 0.0) { err = -err; }
+        if (err < 0.05) { iters = it + 1; err = err; it = 31; }
+        else { dt = improve_drift(dt, target, 0); it = it + 1; }
+    }
+    if (iters == 0) { iters = 30; }
+    qk_sys_log(1, "METRIC chimera_setpoint_iters");
+    qk_sys_logi(1, iters);
+    qk_sys_log(1, "METRIC chimera_setpoint_err");
+    int32 err_scaled = err * 1000.0;
+    qk_sys_logi(1, err_scaled);
+
+    // ---------- 指标 3: 元认知误差识别准确率 ----------
+    // 构造 16 对 (predicted, actual): 偶数轮 actual = 同一制备 (应不识别),
+    // 奇数轮 actual = 多加一次打翻门 (应识别)。统计 recognize_error 的准确率。
+    int32 correct = 0;
+    int32 k = 0;
+    while (k < 16) {
+        auto pred = new QuantumRegister(1);
+        qgate_h(pred, 0);
+        qgate_rz(pred, 0, 0.6 * 1.61803);
+        auto act = new QuantumRegister(1);
+        qgate_h(act, 0);
+        qgate_rz(act, 0, 0.6 * 1.61803);
+        int32 corrupted = k - (k / 2) * 2;   // k % 2
+        if (corrupted == 1) {
+            qgate_rz(act, 0, 3.14159);       // 注入 "预测误差"
+        }
+        ErrorReading r = recognize_error(pred, act);
+        // 期望: corrupted==1 -> recognized==1
+        int32 want = corrupted;
+        if (r.recognized == want) {
+            correct = correct + 1;
+        }
+        k = k + 1;
+    }
+    qk_sys_log(1, "METRIC chimera_error_detect_acc");
+    qk_sys_logi(1, correct * 1000 / 16);
+
+    return 0;
+}

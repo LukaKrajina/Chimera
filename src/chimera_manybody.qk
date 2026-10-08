@@ -43,7 +43,6 @@ double entanglement_spectrum(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z;
     }
@@ -61,7 +60,6 @@ double entanglement_spectrum(QObject state) {
         }
         cut = cut + 1;
     }
-    int32 _ = state.measure();
     return acc / (4.0 * (n - 1));
 }
 
@@ -76,7 +74,6 @@ double order_parameter(QObject state) {
         qgate_h(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 
@@ -91,8 +88,6 @@ double correlation_length(QObject a, QObject b) {
         qgate_cnot_pair(a, 0, b, 0);
         s = s + 1;
     }
-    int32 _a = a.measure();
-    int32 _b = b.measure();
     return acc / 8.0;
 }
 
@@ -105,8 +100,6 @@ double replica_overlap(QObject replica_a, QObject replica_b) {
         acc = acc + qattention(replica_a, replica_b);
         s = s + 1;
     }
-    int32 _a = replica_a.measure();
-    int32 _b = replica_b.measure();
     return acc / 8.0;
 }
 
@@ -122,7 +115,6 @@ double quantum_phase_diagram(QObject state, double theta) {
         qgate_h(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 

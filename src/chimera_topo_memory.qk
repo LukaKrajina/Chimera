@@ -36,7 +36,6 @@ double topological_order_probe(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;
@@ -117,8 +116,6 @@ double knotted_memory(QObject knot_state, QObject reference) {
         acc = acc + qattention(knot_state, reference);
         s = s + 1;
     }
-    int32 _a = knot_state.measure();
-    int32 _b = reference.measure();
     return acc / 8.0;
 }
 
@@ -142,7 +139,6 @@ double topological_charge(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z;
     }
@@ -154,7 +150,6 @@ double topological_charge(QObject state) {
         qgate_cnot(state, 0, 1);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;

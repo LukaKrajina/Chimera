@@ -61,8 +61,6 @@ QObject world_step(QObject state, int32 action, double dt) {
 @layer(time=0, thread=0, coord=(23))
 double world_error(QObject predicted, QObject actual) {
     double overlap = qattention(predicted, actual);
-    int32 _p = predicted.measure();   // 消费（QLT）
-    int32 _a = actual.measure();      // 消费（QLT）
     return 1.0 - overlap;
 }
 

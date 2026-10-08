@@ -59,7 +59,6 @@ double node_aggregation(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 
@@ -72,8 +71,6 @@ double edge_attention(QObject node_a, QObject node_b) {
         acc = acc + qattention(node_a, node_b);
         s = s + 1;
     }
-    int32 _a = node_a.measure();
-    int32 _b = node_b.measure();
     return acc / 8.0;
 }
 
@@ -111,8 +108,6 @@ double graph_kernel(QObject graph_a, QObject graph_b) {
         acc = acc + qattention(graph_a, graph_b);
         s = s + 1;
     }
-    int32 _a = graph_a.measure();
-    int32 _b = graph_b.measure();
     return acc / 8.0;
 }
 
@@ -122,7 +117,6 @@ double community_detection(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z;
     }
@@ -134,7 +128,6 @@ double community_detection(QObject state) {
         qgate_cnot(state, 0, 1);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;

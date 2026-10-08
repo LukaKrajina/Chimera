@@ -11,8 +11,6 @@ double forgetting_probe(QObject old_task, QObject new_task) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = old_task.measure();
-    int32 _b = new_task.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -107,8 +105,6 @@ double knowledge_distill(QObject teacher, QObject student) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = teacher.measure();
-    int32 _b = student.measure();
     return acc / 8.0;
 }
 

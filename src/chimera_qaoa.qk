@@ -57,7 +57,6 @@ double maxcut_energy(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return -acc / 8.0;
 }
 
@@ -84,7 +83,6 @@ double cost_landscape(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     return tanh_quantize(acc, 1.0, 8);
 }
@@ -132,7 +130,6 @@ double solution_diversity(QObject state) {
         sumsq = sumsq + z * z;
         i = i + 1;
     }
-    int32 _ = state.measure();
     double mean = sum / n;
     double variance = sumsq / n - mean * mean;
     if (variance < 0.0) { variance = 0.0; }

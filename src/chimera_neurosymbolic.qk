@@ -56,8 +56,6 @@ double knowledge_distill_sym(QObject rule_state, QObject sample) {
         acc = acc + qattention(rule_state, sample);
         s = s + 1;
     }
-    int32 _a = rule_state.measure();
-    int32 _b = sample.measure();
     return acc / 8.0;
 }
 

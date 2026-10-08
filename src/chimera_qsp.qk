@@ -117,6 +117,5 @@ double spectral_filter(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }

@@ -11,8 +11,6 @@ double fidelity_kernel(QObject x, QObject x_prime) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = x.measure();
-    int32 _b = x_prime.measure();
     double f = acc / 8.0;
     return f * f;
 }
@@ -26,8 +24,6 @@ double projected_kernel(QObject x, QObject x_prime) {
         acc = acc + qattention(x, x_prime);
         s = s + 1;
     }
-    int32 _a = x.measure();
-    int32 _b = x_prime.measure();
     return acc / 8.0;
 }
 
@@ -55,8 +51,6 @@ double svm_quantum(QObject support, QObject sample) {
         acc = acc + qattention(support, sample);
         s = s + 1;
     }
-    int32 _a = support.measure();
-    int32 _b = sample.measure();
     return acc / 8.0;
 }
 
@@ -71,8 +65,6 @@ double kernel_alignment(QObject a, QObject b) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = a.measure();
-    int32 _b = b.measure();
     return acc / 8.0;
 }
 
@@ -99,7 +91,6 @@ double fisher_kernel(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;
@@ -120,7 +111,6 @@ double kernel_pca(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     return acc * acc;
 }

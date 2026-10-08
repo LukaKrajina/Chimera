@@ -28,7 +28,6 @@ int32 qrl_policy(QObject state, double theta) {
 @layer(time=0, thread=0, coord=(36))
 double qrl_value(QObject state) {
     double z = qexpect_z(state, 0);
-    int32 _ = state.measure();   // 消费（QLT）
     return z;
 }
 

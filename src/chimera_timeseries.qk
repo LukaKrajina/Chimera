@@ -36,8 +36,6 @@ double recurrence_probe(QObject t1, QObject t2) {
         acc = acc + qattention(t1, t2);
         s = s + 1;
     }
-    int32 _a = t1.measure();
-    int32 _b = t2.measure();
     return acc / 8.0;
 }
 
@@ -65,8 +63,6 @@ double anomaly_score(QObject predicted, QObject observed) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = predicted.measure();
-    int32 _b = observed.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -79,7 +75,6 @@ double trend_extract(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 

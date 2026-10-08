@@ -48,8 +48,6 @@ double certified_robustness(QObject clean, QObject perturbed) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = clean.measure();
-    int32 _b = perturbed.measure();
     return acc / 8.0;
 }
 
@@ -97,7 +95,6 @@ double shadow_tomography(QObject state, int32 shots) {
         acc = acc + z;
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / shots;
 }
 
@@ -112,8 +109,6 @@ double quantum_gradient_estimator(QObject state_plus, QObject state_minus) {
         f_minus = f_minus + qexpect_z(state_minus, 0);
         s = s + 1;
     }
-    int32 _a = state_plus.measure();
-    int32 _b = state_minus.measure();
     f_plus = f_plus / 8.0;
     f_minus = f_minus / 8.0;
     return (f_plus - f_minus) / 2.0;

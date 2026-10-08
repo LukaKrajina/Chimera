@@ -83,7 +83,6 @@ double variational_encoder(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 
@@ -93,7 +92,6 @@ double latent_disentangle(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z;
     }
@@ -105,7 +103,6 @@ double latent_disentangle(QObject state) {
         qgate_cnot(state, 0, 1);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return 1.0 / (acc + 1.0);
@@ -122,7 +119,5 @@ double rate_distortion(QObject original, QObject compressed) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = original.measure();
-    int32 _b = compressed.measure();
     return acc / 8.0;
 }

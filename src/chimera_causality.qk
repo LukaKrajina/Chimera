@@ -33,8 +33,6 @@ double pseudo_density_matrix(QObject past, QObject present) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _p = past.measure();
-    int32 _n = present.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -107,8 +105,6 @@ double causal_entropy(QObject obs_state, QObject do_state) {
         sd = sd + ed;
         s = s + 1;
     }
-    int32 _a = obs_state.measure();
-    int32 _b = do_state.measure();
     so = so / 8.0;
     sd = sd / 8.0;
     double ce = so - sd;

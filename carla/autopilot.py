@@ -42,6 +42,14 @@ def parse_args():
     p.add_argument("--duration", type=float, default=0.0, help="运行秒数（0=无限）")
     p.add_argument("--loop", action="store_true", help="环路导航（路口右转优先，覆盖全城）")
     p.add_argument("--record", action="store_true", help="录制三视角帧（第一视角+鸟瞰+车道检测）")
+    # ── 双客户端并行对比支持 ──
+    p.add_argument("--mmi", default="chimera_drive.mmi",
+                   help="加载的 .mmi 模块（chimera_drive.mmi / chimera_driveMoE.mmi）")
+    p.add_argument("--role", choices=["main", "secondary"], default="main",
+                   help="main=加载地图+清理世界+占用 spectator 窗口；secondary=复用当前地图，不抢 spectator")
+    p.add_argument("--out", default="", help="录制输出根目录（默认 /tmp/chimera_*；Windows 建议显式指定）")
+    p.add_argument("--label", default="Chimera", help="显示标签（Full / MoE）")
+    p.add_argument("--spawn-index", type=int, default=0, help="出生点索引（多客户端错开，避免同点重叠）")
     return p.parse_args()
 
 
@@ -207,20 +215,46 @@ def cleanup_world(world):
                 pass
 
 
+def format_all_vehicles(world, self_vehicle, label):
+    """格式化场景中所有车辆信息（actor# / 归属 / 型号 / 坐标 / 车速 / 转向）。
+
+    双客户端并行时用于「所有车辆信息显示」——每个客户端的窗口都会同时列出
+    本车（tag=本车）与对方客户端的车辆（tag=对方），便于对比两种模型的表现。
+    """
+    parts = []
+    for act in world.get_actors().filter("vehicle.*"):
+        try:
+            t = act.get_transform()
+            v = act.get_velocity()
+            spd = 3.6 * math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+            tag = "本车" if (self_vehicle is not None and act.id == self_vehicle.id) else "对方"
+            ctrl = act.get_control()
+            model = act.type_id.split(".")[-1]
+            parts.append(f"#{act.id}[{tag}]{model} ({t.location.x:.0f},{t.location.y:.0f}) "
+                         f"{spd:.0f}km/h steer={ctrl.steer:+.2f}")
+        except Exception:
+            continue
+    return "  |  ".join(parts) if parts else "(场景中无车辆)"
+
+
 def main():
     args = parse_args()
 
     # ── 连接 CARLA ──
     client = carla.Client(args.host, args.port)
     client.set_timeout(30.0)
-    world = client.load_world(args.map)   # 加载指定地图
+    if args.role == "main":
+        world = client.load_world(args.map)          # 主客户端：加载地图
+    else:
+        world = client.get_world()                    # 副客户端：复用当前地图（重载会清掉对方车辆）
     bp_lib = world.get_blueprint_library()
-    print(f"[Chimera] 已连接 CARLA，地图 {world.get_map().name}")
+    print(f"[{args.label}] 已连接 CARLA，地图 {world.get_map().name}（role={args.role}）")
 
-    # 启动前清理上次测试残留的车辆/传感器，避免堆积渲染
-    cleanup_world(world)
+    # 仅主客户端清理上次残留（副客户端清理会误删对方车辆）
+    if args.role == "main":
+        cleanup_world(world)
 
-    if args.sync:
+    if args.sync and args.role == "main":
         settings = world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = 1.0 / args.fps
@@ -229,16 +263,31 @@ def main():
     # ── 生成车辆 ──
     vehicle_bp = bp_lib.filter(args.vehicle)[0]
     spawn_points = world.get_map().get_spawn_points()
-    spawn_transform = spawn_points[0]
+    # 多客户端错开出生点，避免两车重叠
+    spawn_transform = spawn_points[args.spawn_index % len(spawn_points)]
+    # 已被另一客户端占用则顺延，避免叠车
+    taken = set()
+    for act in world.get_actors().filter("vehicle.*"):
+        try:
+            loc = act.get_transform().location
+            taken.add((round(loc.x, 1), round(loc.y, 1)))
+        except Exception:
+            pass
+    for k in range(len(spawn_points)):
+        cand = spawn_points[(args.spawn_index + k) % len(spawn_points)]
+        key = (round(cand.location.x, 1), round(cand.location.y, 1))
+        if key not in taken:
+            spawn_transform = cand
+            break
     vehicle = world.try_spawn_actor(vehicle_bp, spawn_transform)
     if vehicle is None:
-        print("[Chimera] 生成车辆失败，请检查。")
+        print(f"[{args.label}] 生成车辆失败，请检查。")
         sys.exit(1)
-    print(f"[Chimera] 车辆已生成：{args.vehicle}")
+    print(f"[{args.label}] 车辆已生成：{args.vehicle} (actor#{vehicle.id})")
 
     # ── 生成人群（车辆附近横穿马路的行人）──
     walkers, walker_controllers, cross_points = spawn_pedestrians(world, bp_lib, spawn_transform, num=20)
-    print(f"[Chimera] 已生成 {len(walkers)} 个横穿行人")
+    print(f"[{args.label}] 已生成 {len(walkers)} 个横穿行人")
 
     # ── 传感器 ──
     camera_bp = bp_lib.find("sensor.camera.rgb")
@@ -273,29 +322,37 @@ def main():
     )
     top_frame = {"img": None}
     top_camera.listen(lambda img: top_frame.update(img=img))
+    # 录制输出：按 label 分子目录，两个客户端互不覆盖
+    rec_root = args.out if args.out else "/tmp"
+    rec_dirs = {
+        "front": os.path.join(rec_root, f"chimera_{args.label}_front"),
+        "lane": os.path.join(rec_root, f"chimera_{args.label}_lane"),
+        "top": os.path.join(rec_root, f"chimera_{args.label}_top"),
+    }
     if args.viz or args.record:
-        os.makedirs("/tmp/chimera_top", exist_ok=True)
-        os.makedirs("/tmp/chimera_lane", exist_ok=True)
-        os.makedirs("/tmp/chimera_drive", exist_ok=True)
+        for d in rec_dirs.values():
+            os.makedirs(d, exist_ok=True)
+        print(f"[{args.label}] 录制输出目录：{rec_root}（三视角 front/lane/top）")
 
     # ── 量子大脑：Quark runtime 真实推理（非 numpy 模拟）──
     qc = QuarkRuntimeClient(host=args.host, port=50052)
     qc.connect()
-    mmi_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chimera_drive.mmi")
-    qc.load_mmi(mmi_path)
+    mmi_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), args.mmi)
+    mmi_id = qc.load_mmi(mmi_path)
+    print(f"[{args.label}] 量子大脑就绪：MMI={args.mmi} (id={mmi_id})，Ctrl+C 退出")
     prev_reward = 0.0   # 上一帧反思奖励（延迟一帧传给 runtime 做自然梯度学习）
     reverse_frames = 0    # 倒车脱困状态机：剩余倒车帧数
     reverse_steer = 0.0   # 倒车脱困状态机：固定转向方向
     collision_stuck = 0   # 卡死检测：连续碰撞帧数
 
-    print("[Chimera] 量子大脑就绪（Quark runtime 混沌意识核推理），Ctrl+C 退出")
     vehicle.set_autopilot(False)
 
     try:
         frame = 0
         t0 = time.time()
         while True:
-            if args.sync:
+            # 同步模式只由主客户端 tick（两个客户端同时 tick 会互相抢帧）
+            if args.sync and args.role == "main":
                 world.tick()
 
             # ── ① 感知：横向偏移（环路导航 或 循线 ground truth，米）──
@@ -365,19 +422,20 @@ def main():
                     vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=1.0))
                     collision_stuck = 0
                     reverse_frames = 0
-                    print(f"[Chimera] 卡死恢复：teleport 回车道 (frame={frame})")
+                    print(f"[{args.label}] 卡死恢复：teleport 回车道 (frame={frame})")
 
             vehicle.apply_control(
                 carla.VehicleControl(throttle=throttle, steer=steer, brake=brake)
             )
 
-            # ── 视角：spectator 第三视角跟随车辆 ──
-            v_trans = vehicle.get_transform()
-            fwd = v_trans.get_forward_vector()
-            spec_loc = v_trans.location - fwd * 8.0 + carla.Location(z=4.0)
-            spectator.set_transform(
-                carla.Transform(spec_loc, carla.Rotation(pitch=-12, yaw=v_trans.rotation.yaw))
-            )
+            # ── 视角：spectator 第三视角跟随车辆（仅主客户端占用渲染窗口）──
+            if args.role == "main":
+                v_trans = vehicle.get_transform()
+                fwd = v_trans.get_forward_vector()
+                spec_loc = v_trans.location - fwd * 8.0 + carla.Location(z=4.0)
+                spectator.set_transform(
+                    carla.Transform(spec_loc, carla.Rotation(pitch=-12, yaw=v_trans.rotation.yaw))
+                )
 
             # ── 录制：三视角帧（第一视角 / 车道检测叠加 / 鸟瞰）──
             rec = args.viz or args.record
@@ -389,7 +447,7 @@ def main():
                         arr = np.frombuffer(detector.last.raw_data, dtype=np.uint8)
                         arr = arr.reshape((detector.last.height, detector.last.width, 4))
                         rgb = arr[:, :, :3][:, :, ::-1].copy()   # BGRA → RGB
-                        cv2.imwrite(f"/tmp/chimera_drive/front_{frame:05d}.png", rgb)
+                        cv2.imwrite(os.path.join(rec_dirs["front"], f"front_{frame:05d}.png"), rgb)
                     except Exception:
                         pass
                 # 车道检测叠加图（红色高亮，mask 对齐检测区域）
@@ -404,7 +462,7 @@ def main():
                         x0, x1 = int(w * 0.15), int(w * 0.85)
                         m[y0:y1, x0:x1, :] = detector.mask[:, :, None] * [255, 0, 0]
                         out = cv2.addWeighted(rgb, 1.0, m, 0.5, 0)
-                        cv2.imwrite(f"/tmp/chimera_lane/frame_{frame:05d}.png", out)
+                        cv2.imwrite(os.path.join(rec_dirs["lane"], f"lane_{frame:05d}.png"), out)
                     except Exception:
                         pass
                 # 上帝视角鸟瞰图（车在中心，俯视道路）
@@ -414,7 +472,7 @@ def main():
                         arr = np.frombuffer(img.raw_data, dtype=np.uint8)
                         arr = arr.reshape((img.height, img.width, 4))
                         rgb = arr[:, :, :3][:, :, ::-1].copy()
-                        cv2.imwrite(f"/tmp/chimera_top/top_{frame:05d}.png", rgb)
+                        cv2.imwrite(os.path.join(rec_dirs["top"], f"top_{frame:05d}.png"), rgb)
                     except Exception:
                         pass
 
@@ -428,8 +486,12 @@ def main():
                             min_walker_d = d
                     except Exception:
                         pass
-                print(f"[Chimera] frame={frame} lat={lateral:+.2f}m ev={evidence:.2f} "
-                      f"steer={steer:+.2f} reward={reward:+.2f} 行人={min_walker_d:.1f}m")
+                v_vel = vehicle.get_velocity()
+                speed_kmh = 3.6 * math.sqrt(v_vel.x * v_vel.x + v_vel.y * v_vel.y + v_vel.z * v_vel.z)
+                print(f"[{args.label}] frame={frame} lat={lateral:+.2f}m ev={evidence:.2f} "
+                      f"steer={steer:+.2f} reward={reward:+.2f} 行人={min_walker_d:.1f}m "
+                      f"车速={speed_kmh:.1f}km/h")
+                print(f"[{args.label}] 全部车辆 ▸ {format_all_vehicles(world, vehicle, args.label)}")
 
             # 行人循环横穿：每 100 帧让行人往返横穿（车辆持续遇到横穿行人）
             if frame % 100 == 0 and cross_points:
@@ -448,7 +510,7 @@ def main():
                 break
 
     except KeyboardInterrupt:
-        print("\n[Chimera] 停止")
+        print(f"\n[{args.label}] 停止")
     finally:
         qc.close()
         # 清理本测试 actor（传感器先于车辆，避免依赖）
@@ -461,13 +523,14 @@ def main():
             vehicle.destroy()
         except Exception:
             pass
-        # 兜底：清除所有残留车辆/传感器（含多次运行堆积）
-        cleanup_world(world)
-        if args.sync:
-            s = world.get_settings()
-            s.synchronous_mode = False
-            world.apply_settings(s)
-        print("[Chimera] 已清理资源（含残留车辆/传感器）")
+        # 兜底全局清理 + 同步模式恢复：仅主客户端执行（副客户端会误删对方车辆 / 抢设置）
+        if args.role == "main":
+            cleanup_world(world)
+            if args.sync:
+                st = world.get_settings()
+                st.synchronous_mode = False
+                world.apply_settings(st)
+        print(f"[{args.label}] 已清理本客户端资源")
 
 
 if __name__ == "__main__":

@@ -26,8 +26,6 @@ double visual_attention(QObject a, QObject b) {
 @layer(time=0, thread=0, coord=(31))
 double temporal_coherence(QObject prev, QObject curr) {
     double f = qstate_fidelity(prev, curr);   // 真·量子保真度（非态重叠近似）
-    int32 _p = prev.measure();   // 消费（QLT）
-    int32 _c = curr.measure();   // 消费（QLT）
     return f;
 }
 

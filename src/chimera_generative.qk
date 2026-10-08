@@ -31,8 +31,6 @@ double quantum_gan_discriminator(QObject real, QObject generated) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = real.measure();
-    int32 _b = generated.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -116,6 +114,5 @@ int32 quantum_sampling(QObject state, int32 qubit_idx) {
     if (qubit_idx < 0) { qubit_idx = 0; }
     if (qubit_idx >= n) { qubit_idx = n - 1; }
     int32 sample = qmeasure(state, qubit_idx);
-    int32 _ = state.measure();
     return sample;
 }

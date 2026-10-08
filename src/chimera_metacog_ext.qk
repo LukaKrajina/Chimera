@@ -9,8 +9,6 @@ double self_referential_loop(QObject state, QObject evolved_state) {
         acc = acc + qattention(state, evolved_state);
         s = s + 1;
     }
-    int32 _a = state.measure();
-    int32 _b = evolved_state.measure();
     return acc / 8.0;
 }
 
@@ -107,7 +105,6 @@ double introspective_probe(QObject state) {
         qgate_rz(state, 0, HALF_PI!());    // S
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;

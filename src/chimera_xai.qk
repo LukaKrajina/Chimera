@@ -9,7 +9,6 @@ double saliency_quantum(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc;
@@ -24,8 +23,6 @@ double concept_activation(QObject concept, QObject sample) {
         acc = acc + qattention(concept, sample);
         s = s + 1;
     }
-    int32 _a = concept.measure();
-    int32 _b = sample.measure();
     return acc / 8.0;
 }
 
@@ -41,7 +38,6 @@ double attribution_probe(QObject state, int32 qubit_idx) {
         acc = acc + qexpect_z(state, qubit_idx);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 
@@ -62,7 +58,6 @@ double feature_importance(QObject state) {
         pert = pert + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     pert = pert / 8.0;
     double delta = base - pert;
     if (delta < 0.0) { delta = -delta; }
@@ -80,8 +75,6 @@ double decision_boundary(QObject class_a, QObject class_b) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = class_a.measure();
-    int32 _b = class_b.measure();
     return 1.0 - acc / 8.0;
 }
 

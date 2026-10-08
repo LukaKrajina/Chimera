@@ -19,7 +19,6 @@ double trajectory_quality(QObject trajectory) {
     if (z < 0.0) {
         z = -z;
     }
-    int32 _ = trajectory.measure();   // 消费（QLT）
     return z;
 }
 

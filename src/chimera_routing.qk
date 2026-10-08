@@ -39,8 +39,6 @@ double interference_gating(QObject signal, QObject gate) {
         acc = acc + qattention(signal, gate);
         s = s + 1;
     }
-    int32 _a = signal.measure();
-    int32 _b = gate.measure();
     return acc / 8.0;
 }
 
@@ -52,8 +50,6 @@ double phase_attention(QObject query, QObject key, double phase_shift) {
         qgate_rz(key, 0, phase_shift);
     }
     double s = qattention(query, key);
-    int32 _a = query.measure();
-    int32 _b = key.measure();
     return s;
 }
 
@@ -63,7 +59,6 @@ double entanglement_gating(QObject state) {
     int32 n = qobj_num_qubits(state);
     if (n < 2) {
         double z = qexpect_z(state, 0);
-        int32 _ = state.measure();
         if (z < 0.0) { z = -z; }
         return z / (z + 1.0);
     }
@@ -79,7 +74,6 @@ double entanglement_gating(QObject state) {
         qgate_h(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return acc / (acc + 1.0);

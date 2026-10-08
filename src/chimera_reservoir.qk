@@ -70,8 +70,6 @@ double quantum_lyapunov(QObject psi, QObject psi_perturbed) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = psi.measure();
-    int32 _b = psi_perturbed.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -84,8 +82,6 @@ double echo_state_probe(QObject forward, QObject backward) {
         acc = acc + qattention(forward, backward);
         s = s + 1;
     }
-    int32 _a = forward.measure();
-    int32 _b = backward.measure();
     return acc / 8.0;
 }
 
@@ -124,7 +120,6 @@ double nonlinear_readout(QObject state, double scale) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     return tanh_quantize(acc, scale, 8);
 }

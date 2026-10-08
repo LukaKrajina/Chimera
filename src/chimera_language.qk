@@ -22,8 +22,6 @@ double semantic_interference(QObject concept_a, QObject concept_b) {
         acc = acc + qattention(concept_a, concept_b);
         s = s + 1;
     }
-    int32 _a = concept_a.measure();
-    int32 _b = concept_b.measure();
     return acc / 8.0;
 }
 
@@ -92,8 +90,6 @@ double entailment_fidelity(QObject premise, QObject conclusion) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = premise.measure();
-    int32 _b = conclusion.measure();
     return acc / 8.0;
 }
 

@@ -47,8 +47,6 @@ double fubini_study_metric(QObject psi, QObject psi_plus) {
         acc = acc + qattention(psi, psi_plus);
         s = s + 1;
     }
-    int32 _a = psi.measure();
-    int32 _b = psi_plus.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -89,8 +87,6 @@ double quantum_metric_tensor(QObject psi, QObject psi_plus, double h) {
         acc = acc + qattention(psi, psi_plus);
         s = s + 1;
     }
-    int32 _a = psi.measure();
-    int32 _b = psi_plus.measure();
     return (1.0 - acc / 8.0) / (h * h);
 }
 

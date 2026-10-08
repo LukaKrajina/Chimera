@@ -10,7 +10,6 @@ double actor_critic_q(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     return acc / 8.0;
 }
 
@@ -90,8 +89,6 @@ double intrinsic_motivation(QObject predicted, QObject actual) {
         acc = acc + qattention(predicted, actual);
         s = s + 1;
     }
-    int32 _a = predicted.measure();
-    int32 _b = actual.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -106,8 +103,6 @@ double exploration_bonus(QObject state, QObject visited) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = state.measure();
-    int32 _b = visited.measure();
     return 1.0 - acc / 8.0;
 }
 

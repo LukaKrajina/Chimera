@@ -46,8 +46,6 @@ double ensemble_diversity(QObject model_a, QObject model_b) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = model_a.measure();
-    int32 _b = model_b.measure();
     return 1.0 - acc / 8.0;
 }
 

@@ -38,8 +38,6 @@ double relative_entropy(QObject rho, QObject sigma) {
         acc = acc + f;
         s = s + 1;
     }
-    int32 _a = rho.measure();
-    int32 _b = sigma.measure();
     return 1.0 - acc / 8.0;
 }
 
@@ -81,7 +79,6 @@ double quantum_cramerrao(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     if (acc < 0.0) { acc = -acc; }
     return 1.0 / (acc + 0.001);
@@ -96,7 +93,6 @@ double fisher_information(QObject state) {
         acc = acc + qexpect_z(state, 0);
         s = s + 1;
     }
-    int32 _ = state.measure();
     acc = acc / 8.0;
     return acc * acc;
 }
@@ -112,6 +108,5 @@ double entanglement_cost(QObject state) {
         acc = acc + e;
         s = s + 1;
     }
-    int32 _ = state.measure();
     return (acc / 8.0) / LN2!();
 }
