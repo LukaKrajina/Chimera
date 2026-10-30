@@ -1,0 +1,1642 @@
+; ModuleID = 'quark_module'
+source_filename = "quark_script.qk"
+
+; --- QIR Standard Library ---
+%Qubit = type opaque
+%QObject = type opaque
+%QModel = type opaque
+%QReservoir = type opaque
+; --- 晶格数组类型（lattice<T, B>，吸收 Futhark/Remora/Rust）---
+%Lattice = type opaque
+
+%form.EmotionReading = type { i8*, i32, %QObject* }
+%form.WeakReading = type { i8*, i32, %QObject* }
+%form.EmotionPolicy = type { i8*, double, double, double, double }
+%form.ErrorReading = type { i8*, double, double, i32 }
+
+@.str.1 = private unnamed_addr constant [23 x i8] c"METRIC chimera_entropy\00", align 1
+@.str.2 = private unnamed_addr constant [30 x i8] c"METRIC chimera_setpoint_iters\00", align 1
+@.str.3 = private unnamed_addr constant [28 x i8] c"METRIC chimera_setpoint_err\00", align 1
+@.str.4 = private unnamed_addr constant [32 x i8] c"METRIC chimera_error_detect_acc\00", align 1
+
+declare %QObject* @qk_create_DiracState(i32)
+declare %QObject* @qk_create_BellState()
+declare %QObject* @qk_create_QuantumRegister(i32)
+declare %QObject* @qk_create_basis_state(double, double, i32)
+declare %Qubit* @__quantum__rt__qubit_allocate()
+declare void @__quantum__rt__qubit_release(%Qubit*)
+declare i32 @__quantum__qis__measure_int(%Qubit*)
+
+; --- 扩展量子门（论文3 Hadamard/QFT/MUB + 论文5 Yang-Baxter braid）---
+declare void @__quantum__qis__h(%Qubit*)
+declare void @__quantum__qis__x(%Qubit*)
+declare void @__quantum__qis__y(%Qubit*)
+declare void @__quantum__qis__z(%Qubit*)
+declare void @__quantum__qis__s(%Qubit*)
+declare void @__quantum__qis__t(%Qubit*)
+declare void @__quantum__qis__rz(double, %Qubit*)
+declare void @__quantum__qis__rx(double, %Qubit*)
+declare void @__quantum__qis__ry(double, %Qubit*)
+declare void @__quantum__qis__cnot(%Qubit*, %Qubit*)
+declare void @__quantum__qis__toffoli(%Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__swap(%Qubit*, %Qubit*)
+declare void @__quantum__qis__qft(i32)
+declare void @__quantum__qis__iqft(i32)
+declare void @__quantum__qis__cqft(%Qubit*, i32)
+declare void @__quantum__qis__braid(%Qubit*, %Qubit*)
+declare void @__quantum__qis__cbraid(%Qubit*, %Qubit*, %Qubit*)
+; --- 受控门（可逆编织 @[steer]：cx/ch/crz/cswap）---
+declare void @__quantum__qis__cx(%Qubit*, %Qubit*)
+declare void @__quantum__qis__ch(%Qubit*, %Qubit*)
+declare void @__quantum__qis__crz(%Qubit*, %Qubit*, double)
+declare void @__quantum__qis__cswap(%Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__c_toffoli(%Qubit*, %Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__apply_noise(%Qubit*, i32, double)
+declare i32 @__quantum__qis__measure_basis(%Qubit*, i8)
+declare i32 @qk_measure_object(%QObject*)
+declare %QObject* @qk_extract_qubit(%QObject*, i32)
+declare void @qk_release_object(%QObject*)
+
+; --- QML&QKM Native Trampolines ---
+declare %QObject* @qk_encode_text(i8*)
+declare %QObject* @qk_encode_amplitudes(i8*, i32)
+declare %QObject* @qk_encode_image(i8*, i32)
+declare %QObject* @qk_encode_adaptive(i8*)
+declare %QModel* @qk_qlm_invoke(%QObject*, i32, double)
+declare void @qk_qkm_export(%QModel*, i8*)
+
+; --- Quark AI Standard Library ABI ---
+declare %QModel* @qk_qlm_load(i8*)
+declare void @qk_qlm_forward(%QModel*, %QObject*)
+declare %QObject* @qk_encode_string(i8*)
+declare i8* @qk_decode_string(%QObject*)
+
+; --- QBNS Mind-Controlled Programming Trampolines ---
+declare %QObject* @qk_mind_read(i8*)
+declare void @qk_mind_train(%QObject*, i32, double)
+declare void @qk_mind_feedback(%QObject*)
+
+; --- VedaROS QLM Trampolines ---
+declare void @qk_veda_qlm_train(%QObject*, i32, double)
+
+; --- QRC Quantum Reservoir ABI ---
+declare %QReservoir* @qk_qrc_new(i32, i32)
+declare %QReservoir* @qk_qrc_new_ex(i32, i32, i32)
+declare void @qk_qrc_train(%QReservoir*, i32, double)
+declare void @qk_qrc_train_ex(%QReservoir*, i32, double, double*, double*, i32, i32, i32)
+declare %QObject* @qk_qrc_probe(%QReservoir*, %QObject*)
+declare %QObject* @qk_qrc_predict(%QReservoir*, %QObject*)
+declare void @qk_qrc_release(%QReservoir*)
+
+; --- TQNF Topological Quantum Neural Field ABI ---
+declare i32 @qk_dla_dim(i8*, i32)
+declare double @qk_qstate_entropy(%QObject*)
+declare double @qk_qstate_fidelity(%QObject*, %QObject*)
+declare double @qk_qattention(%QObject*, %QObject*)
+declare double @qk_shannon4(i32, i32, i32, i32)
+declare double @qk_shannon8(i32, i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_qgate_h(%QObject*, i32)
+declare void @qk_qgate_x(%QObject*, i32)
+declare void @qk_qgate_rz(%QObject*, i32, double)
+declare void @qk_qgate_cnot(%QObject*, i32, i32)
+declare double @qk_qexpect_z(%QObject*, i32)
+declare i32 @qk_qmeasure(%QObject*, i32)
+declare i32 @qk_qobj_num_qubits(%QObject*)
+declare void @qk_qgate_cnot_pair(%QObject*, i32, %QObject*, i32)
+
+; --- Retrocausal Capacity (quantum channel back-in-time ability) ---
+declare double @qk_retrocausal_imax(i32, double)
+declare double @qk_retrocausal_idoe(i32, double)
+declare double @qk_retrocausal_q_capacity(i32, double)
+declare double @qk_retrocausal_c_capacity(i32, double)
+declare double @qk_retrocausal_q_one_shot(i32, double, double)
+declare double @qk_retrocausal_gain(i32, double)
+declare double @qk_retrocausal_deformed(i32, double, double)
+
+; --- Retrocausal CTC (tachyon KK doubled-dimension closed timelike curve) ---
+declare double @qk_retrocausal_ctc_q_capacity(i32, double, double, double)
+declare double @qk_retrocausal_ctc_c_capacity(i32, double, double, double)
+declare double @qk_retrocausal_ctc_gain(i32, double, double, double)
+declare double @qk_retrocausal_ctc_dephasing(double)
+
+; --- Non-Euclidean hypersurface geodesic primitives ---
+declare double @qk_geodesic_distance(%QObject*, %QObject*)
+declare double @qk_inversion(double)
+declare double @qk_hyperbolic_metric(double)
+declare double @qk_hyperbolic_distance(double, double)
+
+; --- Other ---
+declare double @qk_surrogate(double, double, double)
+declare double @qk_tanh_quantize(double, double, i32)
+declare double @qk_lif_step(double, double, double, double)
+declare double @qk_mellowmax2(double, double, double)
+declare double @qk_logsumexp2(double, double, double)
+declare double @qk_boltzmann2(double, double, double)
+declare double @qk_tnorm_luk(double, double)
+declare double @qk_tnorm_prod(double, double)
+declare double @qk_tnorm_godel(double, double)
+declare double @qk_polymer_weight(double, double, double)
+declare double @qk_polymer_mix_bound(double, double)
+
+; --- 晶格数组 ABI（lattice<T, B>，首版 int32 元素 / 1D-2D）---
+declare %Lattice* @qk_lattice_new(i32, i32, i32, i32)
+declare void @qk_lattice_free(%Lattice*)
+declare i32 @qk_lattice_ref(%Lattice*, i32, i32)
+declare void @qk_lattice_set(%Lattice*, i32, i32, i32)
+declare i32 @qk_lattice_rank(%Lattice*)
+declare i32 @qk_lattice_size(%Lattice*, i32)
+declare i32 @qk_lattice_boundary(%Lattice*)
+
+; --- 经典 GUI / 图形引擎 ABI（cgui_* / cgfx_*）---
+declare i32 @qk_cgui_init(i32, i32, i8*)
+declare i32 @qk_cgui_should_close()
+declare void @qk_cgui_begin_frame()
+declare void @qk_cgui_end_frame()
+declare i32 @qk_cgui_button(i8*)
+declare void @qk_cgui_text(i8*)
+declare void @qk_cgui_text_int(i32)
+declare void @qk_cgui_beep(i32, i32)
+declare i32 @qk_cgui_width()
+declare i32 @qk_cgui_height()
+declare void @qk_cgui_panel(i32, i32, i32, i32, i8*)
+declare void @qk_cgui_panel_end()
+declare void @qk_cgui_row(i32, i32)
+declare i32 @qk_cgui_mouse_x()
+declare i32 @qk_cgui_mouse_y()
+declare i32 @qk_cgui_mouse_left_clicked()
+declare void @qk_cgfx_rect(i32, i32, i32, i32, i32)
+declare void @qk_cgfx_line(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_ellipse(i32, i32, i32, i32, i32)
+declare void @qk_cgfx_triangle(i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_rect_a(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_line_a(i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_ellipse_a(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_triangle_a(i32, i32, i32, i32, i32, i32, i32, i32)
+
+; --- QCOS Syscall ABI + Heap ---
+declare i32 @qk_sys_call(i32, i32, i32, i32)
+declare double @qk_sys_calld(i32, double, double)
+declare void @qk_sys_log(i32, i8*)
+declare i32 @qk_sys_logi(i32, i32)
+declare i8* @qk_gc_alloc(i64)
+declare i8* @qk_sys_callp(i32, i64, i64, i64)
+declare void @qk_gc_free(i8*)
+; --- 字符串遍历 / libc 子集 ---
+declare i32 @strlen(i8*)
+declare i8* @malloc(i64)
+declare void @free(i8*)
+declare i8* @memset(i8*, i32, i64)
+declare i8* @memcpy(i8*, i8*, i64)
+declare i32 @kglobals_addr()
+
+; --- QMS 数值内核 ---
+declare double @qk_qms_gap(i32, double, double)
+declare double @qk_mix_bound(double, double, double)
+declare double @qk_qms_conc(double, double)
+
+; --- QChain 量子区块链 ABI ---
+declare i8* @qk_qchain_wallet()
+declare i64 @qk_qchain_balance(i8*)
+declare void @qk_qchain_mint(i8*, i64)
+declare i32 @qk_qchain_transfer(i8*, i8*, i64)
+declare i32 @qk_qchain_mine()
+declare i32 @qk_qchain_height()
+declare i32 @qk_qchain_verify()
+declare i8* @qk_qchain_qkd(i32)
+declare i32 @qk_qchain_qdba(i32)
+declare %QObject* @qk_qchain_coin_mint(i32)
+declare i32 @qk_qchain_coin_verify(%QObject*)
+
+; --- QChain 密码原语 / 抗超时空 / 时空加密 ABI ---
+declare i8* @qk_qchain_sha3(i8*)
+declare i8* @qk_qchain_hmac(i8*, i8*)
+declare i8* @qk_qchain_hash_unicode(i8*)
+declare i8* @qk_qchain_sign(i8*)
+declare i32 @qk_qchain_sign_verify(i8*, i8*)
+declare i8* @qk_qchain_sign_pubkey()
+declare i8* @qk_qchain_mlkem_encaps(i8*)
+declare i8* @qk_qchain_mlkem_decaps(i8*, i8*)
+declare i32 @qk_qchain_causal_verify()
+declare i8* @qk_qchain_cipher_encrypt(i64, i8*)
+declare i8* @qk_qchain_cipher_decrypt(i64, i8*)
+
+; --- 多维标签函数执行拓扑（@layer）调度 ABI ---
+declare i32 @quark_runtime_run_topology(i8*)
+; --- 并发线程（spawn）ABI ---
+declare void @qk_spawn(i8*, i8*)
+
+
+define %QObject* @chaos_drift(%QObject* %arg0, double %arg1) {
+entry:
+ %consciousness_ptr = alloca %QObject*
+ %dt_ptr = alloca double
+ store %QObject* %arg0, %QObject** %consciousness_ptr
+ store double %arg1, double* %dt_ptr
+ %1 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_h(%QObject* %1, i32 0)
+ %2 = load %QObject*, %QObject** %consciousness_ptr
+ %3 = load double, double* %dt_ptr
+ %4 = fmul double %3, 1.61803398874989
+ call void @qk_qgate_rz(%QObject* %2, i32 0, double %4)
+ %5 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_h(%QObject* %5, i32 0)
+ %6 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_h(%QObject* %6, i32 1)
+ %7 = load %QObject*, %QObject** %consciousness_ptr
+ %8 = load double, double* %dt_ptr
+ %9 = fmul double %8, 1.61803398874989
+ call void @qk_qgate_rz(%QObject* %7, i32 1, double %9)
+ %10 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_h(%QObject* %10, i32 1)
+ %11 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_cnot(%QObject* %11, i32 0, i32 1)
+ %12 = load %QObject*, %QObject** %consciousness_ptr
+ %13 = load double, double* %dt_ptr
+ %14 = fmul double %13, 2.4142135623731
+ call void @qk_qgate_rz(%QObject* %12, i32 1, double %14)
+ %15 = load %QObject*, %QObject** %consciousness_ptr
+ call void @qk_qgate_cnot(%QObject* %15, i32 0, i32 1)
+ %16 = load %QObject*, %QObject** %consciousness_ptr
+ ret %QObject* %16
+}
+
+define %form.EmotionReading* @measure_emotion(%QObject* %arg0) {
+entry:
+ %consciousness_ptr = alloca %QObject*
+ %b0_ptr_1 = alloca i32
+ %b1_ptr_2 = alloca i32
+ %form_obj_5 = alloca %form.EmotionReading
+ %r_ptr_3 = alloca %form.EmotionReading*
+ store %QObject* %arg0, %QObject** %consciousness_ptr
+ %1 = load %QObject*, %QObject** %consciousness_ptr
+ %2 = call i32 @qk_qmeasure(%QObject* %1, i32 0)
+ store i32 %2, i32* %b0_ptr_1
+ %3 = load %QObject*, %QObject** %consciousness_ptr
+ %4 = call i32 @qk_qmeasure(%QObject* %3, i32 1)
+ store i32 %4, i32* %b1_ptr_2
+ store %form.EmotionReading* %form_obj_5, %form.EmotionReading** %r_ptr_3
+ %6 = load %form.EmotionReading*, %form.EmotionReading** %r_ptr_3
+ %7 = load i32, i32* %b0_ptr_1
+ %8 = mul i32 %7, 2
+ %9 = load i32, i32* %b1_ptr_2
+ %10 = add i32 %8, %9
+ %11 = getelementptr %form.EmotionReading, %form.EmotionReading* %6, i32 0, i32 1
+ store i32 %10, i32* %11
+ %12 = load %form.EmotionReading*, %form.EmotionReading** %r_ptr_3
+ %13 = load %QObject*, %QObject** %consciousness_ptr
+ %14 = getelementptr %form.EmotionReading, %form.EmotionReading* %12, i32 0, i32 2
+ store %QObject* %13, %QObject** %14
+ %15 = load %form.EmotionReading*, %form.EmotionReading** %r_ptr_3
+ ret %form.EmotionReading* %15
+}
+
+define %form.WeakReading* @weak_measure(%QObject* %arg0, i32 %arg1, double %arg2) {
+entry:
+ %consciousness_ptr = alloca %QObject*
+ %qubit_idx_ptr = alloca i32
+ %eps_ptr = alloca double
+ %anc_ptr_4 = alloca %QObject*
+ %res_ptr_5 = alloca i32
+ %form_obj_14 = alloca %form.WeakReading
+ %r_ptr_6 = alloca %form.WeakReading*
+ store %QObject* %arg0, %QObject** %consciousness_ptr
+ store i32 %arg1, i32* %qubit_idx_ptr
+ store double %arg2, double* %eps_ptr
+ %1 = call %QObject* @qk_create_QuantumRegister(i32 1)
+ store %QObject* %1, %QObject** %anc_ptr_4
+ %2 = load %QObject*, %QObject** %anc_ptr_4
+ call void @qk_qgate_h(%QObject* %2, i32 0)
+ %3 = load %QObject*, %QObject** %consciousness_ptr
+ %4 = load i32, i32* %qubit_idx_ptr
+ %5 = load %QObject*, %QObject** %anc_ptr_4
+ call void @qk_qgate_cnot_pair(%QObject* %3, i32 %4, %QObject* %5, i32 0)
+ %6 = load %QObject*, %QObject** %anc_ptr_4
+ %7 = load double, double* %eps_ptr
+ call void @qk_qgate_rz(%QObject* %6, i32 0, double %7)
+ %8 = load %QObject*, %QObject** %consciousness_ptr
+ %9 = load i32, i32* %qubit_idx_ptr
+ %10 = load %QObject*, %QObject** %anc_ptr_4
+ call void @qk_qgate_cnot_pair(%QObject* %8, i32 %9, %QObject* %10, i32 0)
+ %11 = load %QObject*, %QObject** %anc_ptr_4
+ call void @qk_qgate_h(%QObject* %11, i32 0)
+ %12 = load %QObject*, %QObject** %anc_ptr_4
+ %13 = call i32 @qk_measure_object(%QObject* %12)
+ store i32 %13, i32* %res_ptr_5
+ store %form.WeakReading* %form_obj_14, %form.WeakReading** %r_ptr_6
+ %15 = load %form.WeakReading*, %form.WeakReading** %r_ptr_6
+ %16 = load i32, i32* %res_ptr_5
+ %17 = getelementptr %form.WeakReading, %form.WeakReading* %15, i32 0, i32 1
+ store i32 %16, i32* %17
+ %18 = load %form.WeakReading*, %form.WeakReading** %r_ptr_6
+ %19 = load %QObject*, %QObject** %consciousness_ptr
+ %20 = getelementptr %form.WeakReading, %form.WeakReading* %18, i32 0, i32 2
+ store %QObject* %19, %QObject** %20
+ %21 = load %form.WeakReading*, %form.WeakReading** %r_ptr_6
+ %22 = load %QObject*, %QObject** %anc_ptr_4
+ call void @qk_release_object(%QObject* %22)
+ ret %form.WeakReading* %21
+}
+
+define %form.EmotionPolicy* @init_policy() {
+entry:
+ %form_obj_1 = alloca %form.EmotionPolicy
+ %p_ptr_7 = alloca %form.EmotionPolicy*
+ store %form.EmotionPolicy* %form_obj_1, %form.EmotionPolicy** %p_ptr_7
+ %2 = load %form.EmotionPolicy*, %form.EmotionPolicy** %p_ptr_7
+ %3 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %2, i32 0, i32 1
+ store double 0.5, double* %3
+ %4 = load %form.EmotionPolicy*, %form.EmotionPolicy** %p_ptr_7
+ %5 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %4, i32 0, i32 2
+ store double 0.5, double* %5
+ %6 = load %form.EmotionPolicy*, %form.EmotionPolicy** %p_ptr_7
+ %7 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %6, i32 0, i32 3
+ store double 0.5, double* %7
+ %8 = load %form.EmotionPolicy*, %form.EmotionPolicy** %p_ptr_7
+ %9 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %8, i32 0, i32 4
+ store double 0.5, double* %9
+ %10 = load %form.EmotionPolicy*, %form.EmotionPolicy** %p_ptr_7
+ ret %form.EmotionPolicy* %10
+}
+
+define i32 @decide(%form.EmotionPolicy* %arg0, i32 %arg1, double %arg2) {
+entry:
+ %policy_ptr = alloca %form.EmotionPolicy*
+ %emotion_state_ptr = alloca i32
+ %evidence_ptr = alloca double
+ %threshold_ptr_8 = alloca double
+ %decision_ptr_19 = alloca i32
+ store %form.EmotionPolicy* %arg0, %form.EmotionPolicy** %policy_ptr
+ store i32 %arg1, i32* %emotion_state_ptr
+ store double %arg2, double* %evidence_ptr
+ store double 0.5, double* %threshold_ptr_8
+ %1 = load i32, i32* %emotion_state_ptr
+ br label %route_cmp_13
+
+route_cmp_13:
+ %2 = icmp eq i32 %1, 0
+ br i1 %2, label %route_path_9, label %route_cmp_14
+
+route_cmp_14:
+ %3 = icmp eq i32 %1, 1
+ br i1 %3, label %route_path_10, label %route_cmp_15
+
+route_cmp_15:
+ %4 = icmp eq i32 %1, 2
+ br i1 %4, label %route_path_11, label %route_cmp_16
+
+route_cmp_16:
+ %5 = icmp eq i32 %1, 3
+ br i1 %5, label %route_path_12, label %route_after_18
+
+route_path_9:
+ %6 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %7 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %6, i32 0, i32 1
+ %8 = load double, double* %7
+ store double %8, double* %threshold_ptr_8
+ br label %route_after_18
+
+route_path_10:
+ %9 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %10 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %9, i32 0, i32 2
+ %11 = load double, double* %10
+ store double %11, double* %threshold_ptr_8
+ br label %route_after_18
+
+route_path_11:
+ %12 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %13 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %12, i32 0, i32 3
+ %14 = load double, double* %13
+ store double %14, double* %threshold_ptr_8
+ br label %route_after_18
+
+route_path_12:
+ %15 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %16 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %15, i32 0, i32 4
+ %17 = load double, double* %16
+ store double %17, double* %threshold_ptr_8
+ br label %route_after_18
+
+route_after_18:
+ store i32 0, i32* %decision_ptr_19
+ %18 = load double, double* %evidence_ptr
+ %19 = load double, double* %threshold_ptr_8
+ %20 = fcmp ogt double %18, %19
+ br i1 %20, label %if_then_20, label %if_after_22
+
+if_then_20:
+ store i32 1, i32* %decision_ptr_19
+ br label %if_after_22
+
+if_after_22:
+ %21 = load i32, i32* %decision_ptr_19
+ ret i32 %21
+}
+
+define %QObject* @dream_state(double %arg0) {
+entry:
+ %dt_ptr = alloca double
+ %world_ptr_23 = alloca %QObject*
+ store double %arg0, double* %dt_ptr
+ %1 = call %QObject* @qk_create_QuantumRegister(i32 2)
+ store %QObject* %1, %QObject** %world_ptr_23
+ %2 = load %QObject*, %QObject** %world_ptr_23
+ call void @qk_qgate_h(%QObject* %2, i32 0)
+ %3 = load %QObject*, %QObject** %world_ptr_23
+ %4 = load double, double* %dt_ptr
+ %5 = fmul double %4, 3.14159265358979
+ call void @qk_qgate_rz(%QObject* %3, i32 0, double %5)
+ %6 = load %QObject*, %QObject** %world_ptr_23
+ call void @qk_qgate_h(%QObject* %6, i32 0)
+ %7 = load %QObject*, %QObject** %world_ptr_23
+ %8 = load double, double* %dt_ptr
+ %9 = call %QObject* @chaos_drift(%QObject* %7, double %8)
+ store %QObject* %9, %QObject** %world_ptr_23
+ %10 = load %QObject*, %QObject** %world_ptr_23
+ ret %QObject* %10
+}
+
+define double @quality_of(%QObject* %arg0) {
+entry:
+ %state_ptr = alloca %QObject*
+ store %QObject* %arg0, %QObject** %state_ptr
+ %1 = load %QObject*, %QObject** %state_ptr
+ %2 = call double @qk_qexpect_z(%QObject* %1, i32 0)
+ %3 = load %QObject*, %QObject** %state_ptr
+ call void @qk_release_object(%QObject* %3)
+ ret double %2
+}
+
+define double @improve_drift(double %arg0, double %arg1, i32 %arg2) {
+entry:
+ %dt_ptr = alloca double
+ %target_ptr = alloca double
+ %mode_ptr = alloca i32
+ %h_ptr_24 = alloca double
+ %s_center_ptr_25 = alloca %QObject*
+ %f_center_ptr_26 = alloca double
+ %s_plus_ptr_27 = alloca %QObject*
+ %f_plus_ptr_28 = alloca double
+ %s_minus_ptr_29 = alloca %QObject*
+ %f_minus_ptr_30 = alloca double
+ %grad_ptr_31 = alloca double
+ %dl_ptr_32 = alloca double
+ %s0_ptr_36 = alloca %QObject*
+ %s1_ptr_37 = alloca %QObject*
+ %overlap_ptr_38 = alloca double
+ %G_ptr_39 = alloca double
+ %_s0_ptr_43 = alloca i32
+ %_t0_ptr_44 = alloca i32
+ store double %arg0, double* %dt_ptr
+ store double %arg1, double* %target_ptr
+ store i32 %arg2, i32* %mode_ptr
+ store double 0.01, double* %h_ptr_24
+ %1 = load double, double* %dt_ptr
+ %2 = call %QObject* @dream_state(double %1)
+ store %QObject* %2, %QObject** %s_center_ptr_25
+ %3 = load %QObject*, %QObject** %s_center_ptr_25
+ %4 = call double @quality_of(%QObject* %3)
+ store double %4, double* %f_center_ptr_26
+ %5 = load double, double* %dt_ptr
+ %6 = load double, double* %h_ptr_24
+ %7 = fadd double %5, %6
+ %8 = call %QObject* @dream_state(double %7)
+ store %QObject* %8, %QObject** %s_plus_ptr_27
+ %9 = load %QObject*, %QObject** %s_plus_ptr_27
+ %10 = call double @quality_of(%QObject* %9)
+ store double %10, double* %f_plus_ptr_28
+ %11 = load double, double* %dt_ptr
+ %12 = load double, double* %h_ptr_24
+ %13 = fsub double %11, %12
+ %14 = call %QObject* @dream_state(double %13)
+ store %QObject* %14, %QObject** %s_minus_ptr_29
+ %15 = load %QObject*, %QObject** %s_minus_ptr_29
+ %16 = call double @quality_of(%QObject* %15)
+ store double %16, double* %f_minus_ptr_30
+ %17 = load double, double* %f_plus_ptr_28
+ %18 = load double, double* %f_minus_ptr_30
+ %19 = fsub double %17, %18
+ %20 = load double, double* %h_ptr_24
+ %21 = fmul double 2.0, %20
+ %22 = fdiv double %19, %21
+ store double %22, double* %grad_ptr_31
+ %23 = load double, double* %f_center_ptr_26
+ %24 = load double, double* %target_ptr
+ %25 = fsub double %23, %24
+ %26 = fmul double 2.0, %25
+ %27 = load double, double* %grad_ptr_31
+ %28 = fmul double %26, %27
+ store double %28, double* %dl_ptr_32
+ %29 = load i32, i32* %mode_ptr
+ %30 = icmp eq i32 %29, 0
+ br i1 %30, label %if_then_33, label %if_else_34
+
+if_then_33:
+ %31 = load double, double* %dt_ptr
+ %32 = load double, double* %dl_ptr_32
+ %33 = fmul double 0.1, %32
+ %34 = fsub double %31, %33
+ ret double %34
+
+if_else_34:
+ %35 = load double, double* %dt_ptr
+ %36 = call %QObject* @dream_state(double %35)
+ store %QObject* %36, %QObject** %s0_ptr_36
+ %37 = load double, double* %dt_ptr
+ %38 = load double, double* %h_ptr_24
+ %39 = fadd double %37, %38
+ %40 = call %QObject* @dream_state(double %39)
+ store %QObject* %40, %QObject** %s1_ptr_37
+ %41 = load %QObject*, %QObject** %s0_ptr_36
+ %42 = load %QObject*, %QObject** %s1_ptr_37
+ %43 = call double @qk_qattention(%QObject* %41, %QObject* %42)
+ store double %43, double* %overlap_ptr_38
+ %44 = load double, double* %overlap_ptr_38
+ %45 = fsub double 1.0, %44
+ %46 = load double, double* %h_ptr_24
+ %47 = load double, double* %h_ptr_24
+ %48 = fmul double %46, %47
+ %49 = fdiv double %45, %48
+ store double %49, double* %G_ptr_39
+ %50 = load double, double* %G_ptr_39
+ %51 = fcmp olt double %50, 0.000001
+ br i1 %51, label %if_then_40, label %if_after_42
+
+if_then_40:
+ store double 0.000001, double* %G_ptr_39
+ br label %if_after_42
+
+if_after_42:
+ %52 = load %QObject*, %QObject** %s0_ptr_36
+ %53 = call i32 @qk_qmeasure(%QObject* %52, i32 0)
+ store i32 %53, i32* %_s0_ptr_43
+ %54 = load %QObject*, %QObject** %s1_ptr_37
+ %55 = call i32 @qk_qmeasure(%QObject* %54, i32 0)
+ store i32 %55, i32* %_t0_ptr_44
+ %56 = load double, double* %dt_ptr
+ %57 = load double, double* %dl_ptr_32
+ %58 = load double, double* %G_ptr_39
+ %59 = fdiv double %57, %58
+ %60 = fmul double 0.1, %59
+ %61 = fsub double %56, %60
+ %62 = load %QObject*, %QObject** %s0_ptr_36
+ call void @qk_release_object(%QObject* %62)
+ %63 = load %QObject*, %QObject** %s1_ptr_37
+ call void @qk_release_object(%QObject* %63)
+ ret double %61
+
+if_after_35:
+ ret double 0.0
+}
+
+define %QObject* @decision_state(double %arg0, i32 %arg1) {
+entry:
+ %theta_ptr = alloca double
+ %num_qubits_ptr = alloca i32
+ %d_ptr_45 = alloca %QObject*
+ %i_ptr_46 = alloca i32
+ %j_ptr_50 = alloca i32
+ store double %arg0, double* %theta_ptr
+ store i32 %arg1, i32* %num_qubits_ptr
+ %1 = load i32, i32* %num_qubits_ptr
+ %2 = call %QObject* @qk_create_QuantumRegister(i32 %1)
+ store %QObject* %2, %QObject** %d_ptr_45
+ store i32 0, i32* %i_ptr_46
+ br label %while_cond_47
+
+while_cond_47:
+ %3 = load i32, i32* %i_ptr_46
+ %4 = load i32, i32* %num_qubits_ptr
+ %5 = icmp slt i32 %3, %4
+ br i1 %5, label %while_body_48, label %while_after_49
+
+while_body_48:
+ %6 = load %QObject*, %QObject** %d_ptr_45
+ %7 = load i32, i32* %i_ptr_46
+ call void @qk_qgate_h(%QObject* %6, i32 %7)
+ %8 = load %QObject*, %QObject** %d_ptr_45
+ %9 = load i32, i32* %i_ptr_46
+ %10 = load double, double* %theta_ptr
+ %11 = fmul double %10, 3.14159265358979
+ %12 = load i32, i32* %i_ptr_46
+ %13 = sitofp i32 %12 to double
+ %14 = fmul double 1.0, %13
+ %15 = fadd double 1.0, %14
+ %16 = fmul double %11, %15
+ call void @qk_qgate_rz(%QObject* %8, i32 %9, double %16)
+ %17 = load i32, i32* %i_ptr_46
+ %18 = add i32 %17, 1
+ store i32 %18, i32* %i_ptr_46
+ br label %while_cond_47
+
+while_after_49:
+ store i32 0, i32* %j_ptr_50
+ br label %while_cond_51
+
+while_cond_51:
+ %19 = load i32, i32* %j_ptr_50
+ %20 = load i32, i32* %num_qubits_ptr
+ %21 = sub i32 %20, 1
+ %22 = icmp slt i32 %19, %21
+ br i1 %22, label %while_body_52, label %while_after_53
+
+while_body_52:
+ %23 = load %QObject*, %QObject** %d_ptr_45
+ %24 = load i32, i32* %j_ptr_50
+ %25 = load i32, i32* %j_ptr_50
+ %26 = add i32 %25, 1
+ call void @qk_qgate_cnot(%QObject* %23, i32 %24, i32 %26)
+ %27 = load i32, i32* %j_ptr_50
+ %28 = add i32 %27, 1
+ store i32 %28, i32* %j_ptr_50
+ br label %while_cond_51
+
+while_after_53:
+ %29 = load %QObject*, %QObject** %d_ptr_45
+ ret %QObject* %29
+}
+
+define %form.EmotionPolicy* @learn_emotion_policy(%form.EmotionPolicy* %arg0, i32 %arg1, double %arg2, %QObject* %arg3, i32 %arg4) {
+entry:
+ %policy_ptr = alloca %form.EmotionPolicy*
+ %emotion_state_ptr = alloca i32
+ %reward_ptr = alloca double
+ %perception_ptr = alloca %QObject*
+ %mode_ptr = alloca i32
+ %lr_ptr_57 = alloca double
+ %h_ptr_68 = alloca double
+ %theta_ptr_69 = alloca double
+ %nq_ptr_80 = alloca i32
+ %d_center_ptr_81 = alloca %QObject*
+ %d_plus_ptr_82 = alloca %QObject*
+ %d_minus_ptr_83 = alloca %QObject*
+ %f_center_ptr_84 = alloca double
+ %f_plus_ptr_85 = alloca double
+ %f_minus_ptr_86 = alloca double
+ %grad_ptr_87 = alloca double
+ %d0_ptr_88 = alloca %QObject*
+ %d1_ptr_89 = alloca %QObject*
+ %overlap_ptr_90 = alloca double
+ %G_ptr_91 = alloca double
+ %new_theta_ptr_95 = alloca double
+ %_dc_ptr_112 = alloca i32
+ %_dp_ptr_113 = alloca i32
+ %_dm_ptr_114 = alloca i32
+ %_d0_ptr_115 = alloca i32
+ %_d1_ptr_116 = alloca i32
+ store %form.EmotionPolicy* %arg0, %form.EmotionPolicy** %policy_ptr
+ store i32 %arg1, i32* %emotion_state_ptr
+ store double %arg2, double* %reward_ptr
+ store %QObject* %arg3, %QObject** %perception_ptr
+ store i32 %arg4, i32* %mode_ptr
+ %1 = load i32, i32* %mode_ptr
+ %2 = icmp eq i32 %1, 0
+ br i1 %2, label %if_then_54, label %if_else_55
+
+if_then_54:
+ store double 0.05, double* %lr_ptr_57
+ %3 = load i32, i32* %emotion_state_ptr
+ br label %route_cmp_62
+
+route_cmp_62:
+ %4 = icmp eq i32 %3, 0
+ br i1 %4, label %route_path_58, label %route_cmp_63
+
+route_cmp_63:
+ %5 = icmp eq i32 %3, 1
+ br i1 %5, label %route_path_59, label %route_cmp_64
+
+route_cmp_64:
+ %6 = icmp eq i32 %3, 2
+ br i1 %6, label %route_path_60, label %route_cmp_65
+
+route_cmp_65:
+ %7 = icmp eq i32 %3, 3
+ br i1 %7, label %route_path_61, label %route_after_67
+
+route_path_58:
+ %8 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %9 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %10 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %9, i32 0, i32 1
+ %11 = load double, double* %10
+ %12 = load double, double* %lr_ptr_57
+ %13 = load double, double* %reward_ptr
+ %14 = fmul double %12, %13
+ %15 = fsub double %11, %14
+ %16 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %8, i32 0, i32 1
+ store double %15, double* %16
+ br label %route_after_67
+
+route_path_59:
+ %17 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %18 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %19 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %18, i32 0, i32 2
+ %20 = load double, double* %19
+ %21 = load double, double* %lr_ptr_57
+ %22 = load double, double* %reward_ptr
+ %23 = fmul double %21, %22
+ %24 = fsub double %20, %23
+ %25 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %17, i32 0, i32 2
+ store double %24, double* %25
+ br label %route_after_67
+
+route_path_60:
+ %26 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %27 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %28 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %27, i32 0, i32 3
+ %29 = load double, double* %28
+ %30 = load double, double* %lr_ptr_57
+ %31 = load double, double* %reward_ptr
+ %32 = fmul double %30, %31
+ %33 = fsub double %29, %32
+ %34 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %26, i32 0, i32 3
+ store double %33, double* %34
+ br label %route_after_67
+
+route_path_61:
+ %35 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %36 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %37 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %36, i32 0, i32 4
+ %38 = load double, double* %37
+ %39 = load double, double* %lr_ptr_57
+ %40 = load double, double* %reward_ptr
+ %41 = fmul double %39, %40
+ %42 = fsub double %38, %41
+ %43 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %35, i32 0, i32 4
+ store double %42, double* %43
+ br label %route_after_67
+
+route_after_67:
+ %44 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %45 = load %QObject*, %QObject** %perception_ptr
+ call void @qk_release_object(%QObject* %45)
+ ret %form.EmotionPolicy* %44
+
+if_else_55:
+ store double 0.01, double* %h_ptr_68
+ store double 0.5, double* %theta_ptr_69
+ %46 = load i32, i32* %emotion_state_ptr
+ br label %route_cmp_74
+
+route_cmp_74:
+ %47 = icmp eq i32 %46, 0
+ br i1 %47, label %route_path_70, label %route_cmp_75
+
+route_cmp_75:
+ %48 = icmp eq i32 %46, 1
+ br i1 %48, label %route_path_71, label %route_cmp_76
+
+route_cmp_76:
+ %49 = icmp eq i32 %46, 2
+ br i1 %49, label %route_path_72, label %route_cmp_77
+
+route_cmp_77:
+ %50 = icmp eq i32 %46, 3
+ br i1 %50, label %route_path_73, label %route_after_79
+
+route_path_70:
+ %51 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %52 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %51, i32 0, i32 1
+ %53 = load double, double* %52
+ store double %53, double* %theta_ptr_69
+ br label %route_after_79
+
+route_path_71:
+ %54 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %55 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %54, i32 0, i32 2
+ %56 = load double, double* %55
+ store double %56, double* %theta_ptr_69
+ br label %route_after_79
+
+route_path_72:
+ %57 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %58 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %57, i32 0, i32 3
+ %59 = load double, double* %58
+ store double %59, double* %theta_ptr_69
+ br label %route_after_79
+
+route_path_73:
+ %60 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %61 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %60, i32 0, i32 4
+ %62 = load double, double* %61
+ store double %62, double* %theta_ptr_69
+ br label %route_after_79
+
+route_after_79:
+ %63 = load %QObject*, %QObject** %perception_ptr
+ %64 = call i32 @qk_qobj_num_qubits(%QObject* %63)
+ store i32 %64, i32* %nq_ptr_80
+ %65 = load double, double* %theta_ptr_69
+ %66 = load i32, i32* %nq_ptr_80
+ %67 = call %QObject* @decision_state(double %65, i32 %66)
+ store %QObject* %67, %QObject** %d_center_ptr_81
+ %68 = load double, double* %theta_ptr_69
+ %69 = load double, double* %h_ptr_68
+ %70 = fadd double %68, %69
+ %71 = load i32, i32* %nq_ptr_80
+ %72 = call %QObject* @decision_state(double %70, i32 %71)
+ store %QObject* %72, %QObject** %d_plus_ptr_82
+ %73 = load double, double* %theta_ptr_69
+ %74 = load double, double* %h_ptr_68
+ %75 = fsub double %73, %74
+ %76 = load i32, i32* %nq_ptr_80
+ %77 = call %QObject* @decision_state(double %75, i32 %76)
+ store %QObject* %77, %QObject** %d_minus_ptr_83
+ %78 = load %QObject*, %QObject** %d_center_ptr_81
+ %79 = load %QObject*, %QObject** %perception_ptr
+ %80 = call double @qk_qattention(%QObject* %78, %QObject* %79)
+ store double %80, double* %f_center_ptr_84
+ %81 = load %QObject*, %QObject** %d_plus_ptr_82
+ %82 = load %QObject*, %QObject** %perception_ptr
+ %83 = call double @qk_qattention(%QObject* %81, %QObject* %82)
+ store double %83, double* %f_plus_ptr_85
+ %84 = load %QObject*, %QObject** %d_minus_ptr_83
+ %85 = load %QObject*, %QObject** %perception_ptr
+ %86 = call double @qk_qattention(%QObject* %84, %QObject* %85)
+ store double %86, double* %f_minus_ptr_86
+ %87 = load double, double* %f_plus_ptr_85
+ %88 = load double, double* %f_minus_ptr_86
+ %89 = fsub double %87, %88
+ %90 = load double, double* %h_ptr_68
+ %91 = fmul double 2.0, %90
+ %92 = fdiv double %89, %91
+ store double %92, double* %grad_ptr_87
+ %93 = load double, double* %theta_ptr_69
+ %94 = load i32, i32* %nq_ptr_80
+ %95 = call %QObject* @decision_state(double %93, i32 %94)
+ store %QObject* %95, %QObject** %d0_ptr_88
+ %96 = load double, double* %theta_ptr_69
+ %97 = load double, double* %h_ptr_68
+ %98 = fadd double %96, %97
+ %99 = load i32, i32* %nq_ptr_80
+ %100 = call %QObject* @decision_state(double %98, i32 %99)
+ store %QObject* %100, %QObject** %d1_ptr_89
+ %101 = load %QObject*, %QObject** %d0_ptr_88
+ %102 = load %QObject*, %QObject** %d1_ptr_89
+ %103 = call double @qk_qattention(%QObject* %101, %QObject* %102)
+ store double %103, double* %overlap_ptr_90
+ %104 = load double, double* %overlap_ptr_90
+ %105 = fsub double 1.0, %104
+ %106 = load double, double* %h_ptr_68
+ %107 = load double, double* %h_ptr_68
+ %108 = fmul double %106, %107
+ %109 = fdiv double %105, %108
+ store double %109, double* %G_ptr_91
+ %110 = load double, double* %G_ptr_91
+ %111 = fcmp olt double %110, 0.000001
+ br i1 %111, label %if_then_92, label %if_after_94
+
+if_then_92:
+ store double 0.000001, double* %G_ptr_91
+ br label %if_after_94
+
+if_after_94:
+ %112 = load double, double* %theta_ptr_69
+ %113 = load double, double* %grad_ptr_87
+ %114 = load double, double* %G_ptr_91
+ %115 = fdiv double %113, %114
+ %116 = fmul double 0.05, %115
+ %117 = fadd double %112, %116
+ store double %117, double* %new_theta_ptr_95
+ %118 = load double, double* %new_theta_ptr_95
+ %119 = fcmp olt double %118, 0.0
+ br i1 %119, label %if_then_96, label %if_after_98
+
+if_then_96:
+ store double 0.0, double* %new_theta_ptr_95
+ br label %if_after_98
+
+if_after_98:
+ %120 = load double, double* %new_theta_ptr_95
+ %121 = fcmp ogt double %120, 1.0
+ br i1 %121, label %if_then_99, label %if_after_101
+
+if_then_99:
+ store double 1.0, double* %new_theta_ptr_95
+ br label %if_after_101
+
+if_after_101:
+ %122 = load i32, i32* %emotion_state_ptr
+ br label %route_cmp_106
+
+route_cmp_106:
+ %123 = icmp eq i32 %122, 0
+ br i1 %123, label %route_path_102, label %route_cmp_107
+
+route_cmp_107:
+ %124 = icmp eq i32 %122, 1
+ br i1 %124, label %route_path_103, label %route_cmp_108
+
+route_cmp_108:
+ %125 = icmp eq i32 %122, 2
+ br i1 %125, label %route_path_104, label %route_cmp_109
+
+route_cmp_109:
+ %126 = icmp eq i32 %122, 3
+ br i1 %126, label %route_path_105, label %route_after_111
+
+route_path_102:
+ %127 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %128 = load double, double* %new_theta_ptr_95
+ %129 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %127, i32 0, i32 1
+ store double %128, double* %129
+ br label %route_after_111
+
+route_path_103:
+ %130 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %131 = load double, double* %new_theta_ptr_95
+ %132 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %130, i32 0, i32 2
+ store double %131, double* %132
+ br label %route_after_111
+
+route_path_104:
+ %133 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %134 = load double, double* %new_theta_ptr_95
+ %135 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %133, i32 0, i32 3
+ store double %134, double* %135
+ br label %route_after_111
+
+route_path_105:
+ %136 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %137 = load double, double* %new_theta_ptr_95
+ %138 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %136, i32 0, i32 4
+ store double %137, double* %138
+ br label %route_after_111
+
+route_after_111:
+ %139 = load %QObject*, %QObject** %d_center_ptr_81
+ %140 = call i32 @qk_measure_object(%QObject* %139)
+ store i32 %140, i32* %_dc_ptr_112
+ %141 = load %QObject*, %QObject** %d_plus_ptr_82
+ %142 = call i32 @qk_measure_object(%QObject* %141)
+ store i32 %142, i32* %_dp_ptr_113
+ %143 = load %QObject*, %QObject** %d_minus_ptr_83
+ %144 = call i32 @qk_measure_object(%QObject* %143)
+ store i32 %144, i32* %_dm_ptr_114
+ %145 = load %QObject*, %QObject** %d0_ptr_88
+ %146 = call i32 @qk_measure_object(%QObject* %145)
+ store i32 %146, i32* %_d0_ptr_115
+ %147 = load %QObject*, %QObject** %d1_ptr_89
+ %148 = call i32 @qk_measure_object(%QObject* %147)
+ store i32 %148, i32* %_d1_ptr_116
+ %149 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %150 = load %QObject*, %QObject** %d_center_ptr_81
+ call void @qk_release_object(%QObject* %150)
+ %151 = load %QObject*, %QObject** %d_plus_ptr_82
+ call void @qk_release_object(%QObject* %151)
+ %152 = load %QObject*, %QObject** %d_minus_ptr_83
+ call void @qk_release_object(%QObject* %152)
+ %153 = load %QObject*, %QObject** %d0_ptr_88
+ call void @qk_release_object(%QObject* %153)
+ %154 = load %QObject*, %QObject** %d1_ptr_89
+ call void @qk_release_object(%QObject* %154)
+ %155 = load %QObject*, %QObject** %perception_ptr
+ call void @qk_release_object(%QObject* %155)
+ ret %form.EmotionPolicy* %149
+
+if_after_56:
+ %156 = load %QObject*, %QObject** %perception_ptr
+ call void @qk_release_object(%QObject* %156)
+ ret %form.EmotionPolicy* null
+}
+
+define %form.ErrorReading* @recognize_error(%QObject* %arg0, %QObject* %arg1) {
+entry:
+ %predicted_ptr = alloca %QObject*
+ %actual_ptr = alloca %QObject*
+ %overlap_ptr_117 = alloca double
+ %z_ptr_118 = alloca double
+ %_p_ptr_119 = alloca i32
+ %_a_ptr_120 = alloca i32
+ %error_ptr_121 = alloca double
+ %confidence_ptr_122 = alloca double
+ %recognized_ptr_126 = alloca i32
+ %form_obj_19 = alloca %form.ErrorReading
+ %r_ptr_130 = alloca %form.ErrorReading*
+ store %QObject* %arg0, %QObject** %predicted_ptr
+ store %QObject* %arg1, %QObject** %actual_ptr
+ %1 = load %QObject*, %QObject** %predicted_ptr
+ %2 = load %QObject*, %QObject** %actual_ptr
+ %3 = call double @qk_qattention(%QObject* %1, %QObject* %2)
+ store double %3, double* %overlap_ptr_117
+ %4 = load %QObject*, %QObject** %predicted_ptr
+ %5 = call double @qk_qexpect_z(%QObject* %4, i32 0)
+ store double %5, double* %z_ptr_118
+ %6 = load %QObject*, %QObject** %predicted_ptr
+ %7 = call i32 @qk_qmeasure(%QObject* %6, i32 0)
+ store i32 %7, i32* %_p_ptr_119
+ %8 = load %QObject*, %QObject** %actual_ptr
+ %9 = call i32 @qk_qmeasure(%QObject* %8, i32 0)
+ store i32 %9, i32* %_a_ptr_120
+ %10 = load double, double* %overlap_ptr_117
+ %11 = fsub double 1.0, %10
+ store double %11, double* %error_ptr_121
+ %12 = load double, double* %z_ptr_118
+ store double %12, double* %confidence_ptr_122
+ %13 = load double, double* %confidence_ptr_122
+ %14 = fcmp olt double %13, 0.0
+ br i1 %14, label %if_then_123, label %if_after_125
+
+if_then_123:
+ %15 = load double, double* %confidence_ptr_122
+ %16 = fsub double -0.0, %15
+ store double %16, double* %confidence_ptr_122
+ br label %if_after_125
+
+if_after_125:
+ store i32 0, i32* %recognized_ptr_126
+ %17 = load double, double* %error_ptr_121
+ %18 = fcmp ogt double %17, 0.5
+ br i1 %18, label %if_then_127, label %if_after_129
+
+if_then_127:
+ store i32 1, i32* %recognized_ptr_126
+ br label %if_after_129
+
+if_after_129:
+ store %form.ErrorReading* %form_obj_19, %form.ErrorReading** %r_ptr_130
+ %20 = load %form.ErrorReading*, %form.ErrorReading** %r_ptr_130
+ %21 = load double, double* %error_ptr_121
+ %22 = getelementptr %form.ErrorReading, %form.ErrorReading* %20, i32 0, i32 1
+ store double %21, double* %22
+ %23 = load %form.ErrorReading*, %form.ErrorReading** %r_ptr_130
+ %24 = load double, double* %confidence_ptr_122
+ %25 = getelementptr %form.ErrorReading, %form.ErrorReading* %23, i32 0, i32 2
+ store double %24, double* %25
+ %26 = load %form.ErrorReading*, %form.ErrorReading** %r_ptr_130
+ %27 = load i32, i32* %recognized_ptr_126
+ %28 = getelementptr %form.ErrorReading, %form.ErrorReading* %26, i32 0, i32 3
+ store i32 %27, i32* %28
+ %29 = load %form.ErrorReading*, %form.ErrorReading** %r_ptr_130
+ %30 = load %QObject*, %QObject** %predicted_ptr
+ call void @qk_release_object(%QObject* %30)
+ %31 = load %QObject*, %QObject** %actual_ptr
+ call void @qk_release_object(%QObject* %31)
+ ret %form.ErrorReading* %29
+}
+
+define %form.EmotionPolicy* @reflect_and_learn(%form.EmotionPolicy* %arg0, i32 %arg1, %form.ErrorReading* %arg2, double %arg3) {
+entry:
+ %policy_ptr = alloca %form.EmotionPolicy*
+ %emotion_state_ptr = alloca i32
+ %err_ptr = alloca %form.ErrorReading*
+ %reward_ptr = alloca double
+ %amplification_ptr_131 = alloca double
+ %k_ptr_132 = alloca i32
+ %reflect_ptr_136 = alloca %QObject*
+ %z_ptr_137 = alloca double
+ %__ptr_138 = alloca i32
+ %lr_ptr_142 = alloca double
+ %effective_ptr_146 = alloca double
+ store %form.EmotionPolicy* %arg0, %form.EmotionPolicy** %policy_ptr
+ store i32 %arg1, i32* %emotion_state_ptr
+ store %form.ErrorReading* %arg2, %form.ErrorReading** %err_ptr
+ store double %arg3, double* %reward_ptr
+ store double 1.0, double* %amplification_ptr_131
+ store i32 0, i32* %k_ptr_132
+ br label %while_cond_133
+
+while_cond_133:
+ %1 = load i32, i32* %k_ptr_132
+ %2 = icmp slt i32 %1, 3
+ br i1 %2, label %while_body_134, label %while_after_135
+
+while_body_134:
+ %3 = load %form.ErrorReading*, %form.ErrorReading** %err_ptr
+ %4 = getelementptr %form.ErrorReading, %form.ErrorReading* %3, i32 0, i32 1
+ %5 = load double, double* %4
+ %6 = fmul double %5, 3.14159265358979
+ %7 = call %QObject* @qk_create_basis_state(double %6, double 0.0, i32 0)
+ store %QObject* %7, %QObject** %reflect_ptr_136
+ %8 = load %QObject*, %QObject** %reflect_ptr_136
+ %9 = call double @qk_qexpect_z(%QObject* %8, i32 0)
+ store double %9, double* %z_ptr_137
+ %10 = load %QObject*, %QObject** %reflect_ptr_136
+ %11 = call i32 @qk_qmeasure(%QObject* %10, i32 0)
+ store i32 %11, i32* %__ptr_138
+ %12 = load double, double* %z_ptr_137
+ %13 = fcmp olt double %12, 0.0
+ br i1 %13, label %if_then_139, label %if_after_141
+
+if_then_139:
+ %14 = load double, double* %z_ptr_137
+ %15 = fsub double -0.0, %14
+ store double %15, double* %z_ptr_137
+ br label %if_after_141
+
+if_after_141:
+ %16 = load double, double* %amplification_ptr_131
+ %17 = load double, double* %z_ptr_137
+ %18 = fsub double 1.0, %17
+ %19 = fmul double %18, 0.5
+ %20 = fadd double %16, %19
+ store double %20, double* %amplification_ptr_131
+ %21 = load i32, i32* %k_ptr_132
+ %22 = add i32 %21, 1
+ store i32 %22, i32* %k_ptr_132
+ %23 = load %QObject*, %QObject** %reflect_ptr_136
+ call void @qk_release_object(%QObject* %23)
+ br label %while_cond_133
+
+while_after_135:
+ %24 = load double, double* %amplification_ptr_131
+ %25 = fmul double 0.05, %24
+ store double %25, double* %lr_ptr_142
+ %26 = load %form.ErrorReading*, %form.ErrorReading** %err_ptr
+ %27 = getelementptr %form.ErrorReading, %form.ErrorReading* %26, i32 0, i32 3
+ %28 = load i32, i32* %27
+ %29 = icmp eq i32 %28, 1
+ br i1 %29, label %if_then_143, label %if_after_145
+
+if_then_143:
+ %30 = load double, double* %lr_ptr_142
+ %31 = load %form.ErrorReading*, %form.ErrorReading** %err_ptr
+ %32 = getelementptr %form.ErrorReading, %form.ErrorReading* %31, i32 0, i32 2
+ %33 = load double, double* %32
+ %34 = fsub double 1.0, %33
+ %35 = fadd double 1.0, %34
+ %36 = fmul double %30, %35
+ store double %36, double* %lr_ptr_142
+ br label %if_after_145
+
+if_after_145:
+ %37 = load double, double* %reward_ptr
+ store double %37, double* %effective_ptr_146
+ %38 = load %form.ErrorReading*, %form.ErrorReading** %err_ptr
+ %39 = getelementptr %form.ErrorReading, %form.ErrorReading* %38, i32 0, i32 3
+ %40 = load i32, i32* %39
+ %41 = icmp eq i32 %40, 1
+ br i1 %41, label %if_then_147, label %if_after_149
+
+if_then_147:
+ %42 = load double, double* %reward_ptr
+ %43 = load %form.ErrorReading*, %form.ErrorReading** %err_ptr
+ %44 = getelementptr %form.ErrorReading, %form.ErrorReading* %43, i32 0, i32 1
+ %45 = load double, double* %44
+ %46 = fsub double %45, 0.5
+ %47 = load double, double* %amplification_ptr_131
+ %48 = fmul double %46, %47
+ %49 = fsub double %42, %48
+ store double %49, double* %effective_ptr_146
+ br label %if_after_149
+
+if_after_149:
+ %50 = load i32, i32* %emotion_state_ptr
+ br label %route_cmp_154
+
+route_cmp_154:
+ %51 = icmp eq i32 %50, 0
+ br i1 %51, label %route_path_150, label %route_cmp_155
+
+route_cmp_155:
+ %52 = icmp eq i32 %50, 1
+ br i1 %52, label %route_path_151, label %route_cmp_156
+
+route_cmp_156:
+ %53 = icmp eq i32 %50, 2
+ br i1 %53, label %route_path_152, label %route_cmp_157
+
+route_cmp_157:
+ %54 = icmp eq i32 %50, 3
+ br i1 %54, label %route_path_153, label %route_after_159
+
+route_path_150:
+ %55 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %56 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %57 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %56, i32 0, i32 1
+ %58 = load double, double* %57
+ %59 = load double, double* %lr_ptr_142
+ %60 = load double, double* %effective_ptr_146
+ %61 = fmul double %59, %60
+ %62 = fsub double %58, %61
+ %63 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %55, i32 0, i32 1
+ store double %62, double* %63
+ br label %route_after_159
+
+route_path_151:
+ %64 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %65 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %66 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %65, i32 0, i32 2
+ %67 = load double, double* %66
+ %68 = load double, double* %lr_ptr_142
+ %69 = load double, double* %effective_ptr_146
+ %70 = fmul double %68, %69
+ %71 = fsub double %67, %70
+ %72 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %64, i32 0, i32 2
+ store double %71, double* %72
+ br label %route_after_159
+
+route_path_152:
+ %73 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %74 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %75 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %74, i32 0, i32 3
+ %76 = load double, double* %75
+ %77 = load double, double* %lr_ptr_142
+ %78 = load double, double* %effective_ptr_146
+ %79 = fmul double %77, %78
+ %80 = fsub double %76, %79
+ %81 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %73, i32 0, i32 3
+ store double %80, double* %81
+ br label %route_after_159
+
+route_path_153:
+ %82 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %83 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ %84 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %83, i32 0, i32 4
+ %85 = load double, double* %84
+ %86 = load double, double* %lr_ptr_142
+ %87 = load double, double* %effective_ptr_146
+ %88 = fmul double %86, %87
+ %89 = fsub double %85, %88
+ %90 = getelementptr %form.EmotionPolicy, %form.EmotionPolicy* %82, i32 0, i32 4
+ store double %89, double* %90
+ br label %route_after_159
+
+route_after_159:
+ %91 = load %form.EmotionPolicy*, %form.EmotionPolicy** %policy_ptr
+ ret %form.EmotionPolicy* %91
+}
+
+define double @chaos_richness(double %arg0, i32 %arg1) {
+entry:
+ %dt_ptr = alloca double
+ %steps_ptr = alloca i32
+ %n0_ptr_160 = alloca i32
+ %n1_ptr_161 = alloca i32
+ %n2_ptr_162 = alloca i32
+ %n3_ptr_163 = alloca i32
+ %shots_ptr_164 = alloca i32
+ %s_ptr_169 = alloca i32
+ %psi_ptr_170 = alloca %QObject*
+ %i_ptr_175 = alloca i32
+ %b0_ptr_176 = alloca i32
+ %b1_ptr_177 = alloca i32
+ %st_ptr_178 = alloca i32
+ store double %arg0, double* %dt_ptr
+ store i32 %arg1, i32* %steps_ptr
+ store i32 0, i32* %n0_ptr_160
+ store i32 0, i32* %n1_ptr_161
+ store i32 0, i32* %n2_ptr_162
+ store i32 0, i32* %n3_ptr_163
+ store i32 8, i32* %shots_ptr_164
+ store i32 0, i32* %s_ptr_169
+ br label %for_cond_165
+
+for_cond_165:
+ %1 = load i32, i32* %s_ptr_169
+ %2 = load i32, i32* %shots_ptr_164
+ %3 = icmp slt i32 %1, %2
+ br i1 %3, label %for_body_166, label %for_after_168
+
+for_body_166:
+ %4 = call %QObject* @qk_create_QuantumRegister(i32 2)
+ store %QObject* %4, %QObject** %psi_ptr_170
+ store i32 0, i32* %i_ptr_175
+ br label %for_cond_171
+
+for_cond_171:
+ %5 = load i32, i32* %i_ptr_175
+ %6 = load i32, i32* %steps_ptr
+ %7 = icmp slt i32 %5, %6
+ br i1 %7, label %for_body_172, label %for_after_174
+
+for_body_172:
+ %8 = load %QObject*, %QObject** %psi_ptr_170
+ %9 = load double, double* %dt_ptr
+ %10 = call %QObject* @chaos_drift(%QObject* %8, double %9)
+ store %QObject* %10, %QObject** %psi_ptr_170
+ br label %for_update_173
+
+for_update_173:
+ %11 = load i32, i32* %i_ptr_175
+ %12 = add i32 %11, 1
+ store i32 %12, i32* %i_ptr_175
+ br label %for_cond_171
+
+for_after_174:
+ %13 = load %QObject*, %QObject** %psi_ptr_170
+ %14 = call i32 @qk_qmeasure(%QObject* %13, i32 0)
+ store i32 %14, i32* %b0_ptr_176
+ %15 = load %QObject*, %QObject** %psi_ptr_170
+ %16 = call i32 @qk_qmeasure(%QObject* %15, i32 1)
+ store i32 %16, i32* %b1_ptr_177
+ %17 = load i32, i32* %b0_ptr_176
+ %18 = mul i32 %17, 2
+ %19 = load i32, i32* %b1_ptr_177
+ %20 = add i32 %18, %19
+ store i32 %20, i32* %st_ptr_178
+ %21 = load i32, i32* %st_ptr_178
+ %22 = icmp eq i32 %21, 0
+ br i1 %22, label %if_then_179, label %if_after_181
+
+if_then_179:
+ %23 = load i32, i32* %n0_ptr_160
+ %24 = add i32 %23, 1
+ store i32 %24, i32* %n0_ptr_160
+ br label %if_after_181
+
+if_after_181:
+ %25 = load i32, i32* %st_ptr_178
+ %26 = icmp eq i32 %25, 1
+ br i1 %26, label %if_then_182, label %if_after_184
+
+if_then_182:
+ %27 = load i32, i32* %n1_ptr_161
+ %28 = add i32 %27, 1
+ store i32 %28, i32* %n1_ptr_161
+ br label %if_after_184
+
+if_after_184:
+ %29 = load i32, i32* %st_ptr_178
+ %30 = icmp eq i32 %29, 2
+ br i1 %30, label %if_then_185, label %if_after_187
+
+if_then_185:
+ %31 = load i32, i32* %n2_ptr_162
+ %32 = add i32 %31, 1
+ store i32 %32, i32* %n2_ptr_162
+ br label %if_after_187
+
+if_after_187:
+ %33 = load i32, i32* %st_ptr_178
+ %34 = icmp eq i32 %33, 3
+ br i1 %34, label %if_then_188, label %if_after_190
+
+if_then_188:
+ %35 = load i32, i32* %n3_ptr_163
+ %36 = add i32 %35, 1
+ store i32 %36, i32* %n3_ptr_163
+ br label %if_after_190
+
+if_after_190:
+ %37 = load %QObject*, %QObject** %psi_ptr_170
+ call void @qk_release_object(%QObject* %37)
+ br label %for_update_167
+
+for_update_167:
+ %38 = load i32, i32* %s_ptr_169
+ %39 = add i32 %38, 1
+ store i32 %39, i32* %s_ptr_169
+ br label %for_cond_165
+
+for_after_168:
+ %40 = load i32, i32* %n0_ptr_160
+ %41 = load i32, i32* %n1_ptr_161
+ %42 = load i32, i32* %n2_ptr_162
+ %43 = load i32, i32* %n3_ptr_163
+ %44 = call double @qk_shannon4(i32 %40, i32 %41, i32 %42, i32 %43)
+ ret double %44
+}
+
+define i32 @quark_main() {
+entry:
+ %ent_sum_ptr_191 = alloca double
+ %t_ptr_192 = alloca i32
+ %reg_ptr_196 = alloca %QObject*
+ %s_ptr_197 = alloca i32
+ %_b0_ptr_201 = alloca i32
+ %_b1_ptr_202 = alloca i32
+ %ent_ptr_203 = alloca double
+ %ent_scaled_ptr_204 = alloca i32
+ %dt_ptr_205 = alloca double
+ %target_ptr_206 = alloca double
+ %iters_ptr_207 = alloca i32
+ %err_ptr_208 = alloca double
+ %it_ptr_209 = alloca i32
+ %st_ptr_213 = alloca %QObject*
+ %q_ptr_214 = alloca double
+ %_m_ptr_215 = alloca i32
+ %err_scaled_ptr_225 = alloca i32
+ %correct_ptr_226 = alloca i32
+ %k_ptr_227 = alloca i32
+ %pred_ptr_231 = alloca %QObject*
+ %act_ptr_232 = alloca %QObject*
+ %corrupted_ptr_233 = alloca i32
+ %r_ptr_237 = alloca %form.ErrorReading*
+ %want_ptr_238 = alloca i32
+ store double 0.0, double* %ent_sum_ptr_191
+ store i32 0, i32* %t_ptr_192
+ br label %while_cond_193
+
+while_cond_193:
+ %1 = load i32, i32* %t_ptr_192
+ %2 = icmp slt i32 %1, 40
+ br i1 %2, label %while_body_194, label %while_after_195
+
+while_body_194:
+ %3 = call %QObject* @qk_create_QuantumRegister(i32 2)
+ store %QObject* %3, %QObject** %reg_ptr_196
+ store i32 0, i32* %s_ptr_197
+ br label %while_cond_198
+
+while_cond_198:
+ %4 = load i32, i32* %s_ptr_197
+ %5 = icmp slt i32 %4, 6
+ br i1 %5, label %while_body_199, label %while_after_200
+
+while_body_199:
+ %6 = load %QObject*, %QObject** %reg_ptr_196
+ %7 = call %QObject* @chaos_drift(%QObject* %6, double 0.6)
+ store %QObject* %7, %QObject** %reg_ptr_196
+ %8 = load i32, i32* %s_ptr_197
+ %9 = add i32 %8, 1
+ store i32 %9, i32* %s_ptr_197
+ br label %while_cond_198
+
+while_after_200:
+ %10 = load double, double* %ent_sum_ptr_191
+ %11 = load %QObject*, %QObject** %reg_ptr_196
+ %12 = call double @qk_qstate_entropy(%QObject* %11)
+ %13 = fadd double %10, %12
+ store double %13, double* %ent_sum_ptr_191
+ %14 = load %QObject*, %QObject** %reg_ptr_196
+ %15 = call i32 @qk_qmeasure(%QObject* %14, i32 0)
+ store i32 %15, i32* %_b0_ptr_201
+ %16 = load %QObject*, %QObject** %reg_ptr_196
+ %17 = call i32 @qk_qmeasure(%QObject* %16, i32 1)
+ store i32 %17, i32* %_b1_ptr_202
+ %18 = load i32, i32* %t_ptr_192
+ %19 = add i32 %18, 1
+ store i32 %19, i32* %t_ptr_192
+ %20 = load %QObject*, %QObject** %reg_ptr_196
+ call void @qk_release_object(%QObject* %20)
+ br label %while_cond_193
+
+while_after_195:
+ %21 = load double, double* %ent_sum_ptr_191
+ %22 = fdiv double %21, 40.0
+ store double %22, double* %ent_ptr_203
+ %23 = getelementptr inbounds [23 x i8], [23 x i8]* @.str.1, i64 0, i64 0
+ call void @qk_sys_log(i32 1, i8* %23)
+ %24 = load double, double* %ent_ptr_203
+ %25 = fmul double %24, 1000.0
+ %26 = fptosi double %25 to i32
+ store i32 %26, i32* %ent_scaled_ptr_204
+ %27 = load i32, i32* %ent_scaled_ptr_204
+ %28 = call i32 @qk_sys_logi(i32 1, i32 %27)
+ store double 0.3, double* %dt_ptr_205
+ store double 0.5, double* %target_ptr_206
+ store i32 0, i32* %iters_ptr_207
+ store double 9.9, double* %err_ptr_208
+ store i32 0, i32* %it_ptr_209
+ br label %while_cond_210
+
+while_cond_210:
+ %29 = load i32, i32* %it_ptr_209
+ %30 = icmp slt i32 %29, 30
+ br i1 %30, label %while_body_211, label %while_after_212
+
+while_body_211:
+ %31 = load double, double* %dt_ptr_205
+ %32 = call %QObject* @dream_state(double %31)
+ store %QObject* %32, %QObject** %st_ptr_213
+ %33 = load %QObject*, %QObject** %st_ptr_213
+ %34 = call double @quality_of(%QObject* %33)
+ store double %34, double* %q_ptr_214
+ %35 = load %QObject*, %QObject** %st_ptr_213
+ %36 = call i32 @qk_qmeasure(%QObject* %35, i32 0)
+ store i32 %36, i32* %_m_ptr_215
+ %37 = load double, double* %q_ptr_214
+ %38 = load double, double* %target_ptr_206
+ %39 = fsub double %37, %38
+ store double %39, double* %err_ptr_208
+ %40 = load double, double* %err_ptr_208
+ %41 = fcmp olt double %40, 0.0
+ br i1 %41, label %if_then_216, label %if_after_218
+
+if_then_216:
+ %42 = load double, double* %err_ptr_208
+ %43 = fsub double -0.0, %42
+ store double %43, double* %err_ptr_208
+ br label %if_after_218
+
+if_after_218:
+ %44 = load double, double* %err_ptr_208
+ %45 = fcmp olt double %44, 0.05
+ br i1 %45, label %if_then_219, label %if_else_220
+
+if_then_219:
+ %46 = load i32, i32* %it_ptr_209
+ %47 = add i32 %46, 1
+ store i32 %47, i32* %iters_ptr_207
+ %48 = load double, double* %err_ptr_208
+ store double %48, double* %err_ptr_208
+ store i32 31, i32* %it_ptr_209
+ br label %if_after_221
+
+if_else_220:
+ %49 = load double, double* %dt_ptr_205
+ %50 = load double, double* %target_ptr_206
+ %51 = call double @improve_drift(double %49, double %50, i32 0)
+ store double %51, double* %dt_ptr_205
+ %52 = load i32, i32* %it_ptr_209
+ %53 = add i32 %52, 1
+ store i32 %53, i32* %it_ptr_209
+ br label %if_after_221
+
+if_after_221:
+ br label %while_cond_210
+
+while_after_212:
+ %54 = load i32, i32* %iters_ptr_207
+ %55 = icmp eq i32 %54, 0
+ br i1 %55, label %if_then_222, label %if_after_224
+
+if_then_222:
+ store i32 30, i32* %iters_ptr_207
+ br label %if_after_224
+
+if_after_224:
+ %56 = getelementptr inbounds [30 x i8], [30 x i8]* @.str.2, i64 0, i64 0
+ call void @qk_sys_log(i32 1, i8* %56)
+ %57 = load i32, i32* %iters_ptr_207
+ %58 = call i32 @qk_sys_logi(i32 1, i32 %57)
+ %59 = getelementptr inbounds [28 x i8], [28 x i8]* @.str.3, i64 0, i64 0
+ call void @qk_sys_log(i32 1, i8* %59)
+ %60 = load double, double* %err_ptr_208
+ %61 = fmul double %60, 1000.0
+ %62 = fptosi double %61 to i32
+ store i32 %62, i32* %err_scaled_ptr_225
+ %63 = load i32, i32* %err_scaled_ptr_225
+ %64 = call i32 @qk_sys_logi(i32 1, i32 %63)
+ store i32 0, i32* %correct_ptr_226
+ store i32 0, i32* %k_ptr_227
+ br label %while_cond_228
+
+while_cond_228:
+ %65 = load i32, i32* %k_ptr_227
+ %66 = icmp slt i32 %65, 16
+ br i1 %66, label %while_body_229, label %while_after_230
+
+while_body_229:
+ %67 = call %QObject* @qk_create_QuantumRegister(i32 1)
+ store %QObject* %67, %QObject** %pred_ptr_231
+ %68 = load %QObject*, %QObject** %pred_ptr_231
+ call void @qk_qgate_h(%QObject* %68, i32 0)
+ %69 = load %QObject*, %QObject** %pred_ptr_231
+ %70 = fmul double 0.6, 1.61803
+ call void @qk_qgate_rz(%QObject* %69, i32 0, double %70)
+ %71 = call %QObject* @qk_create_QuantumRegister(i32 1)
+ store %QObject* %71, %QObject** %act_ptr_232
+ %72 = load %QObject*, %QObject** %act_ptr_232
+ call void @qk_qgate_h(%QObject* %72, i32 0)
+ %73 = load %QObject*, %QObject** %act_ptr_232
+ %74 = fmul double 0.6, 1.61803
+ call void @qk_qgate_rz(%QObject* %73, i32 0, double %74)
+ %75 = load i32, i32* %k_ptr_227
+ %76 = load i32, i32* %k_ptr_227
+ %77 = sdiv i32 %76, 2
+ %78 = mul i32 %77, 2
+ %79 = sub i32 %75, %78
+ store i32 %79, i32* %corrupted_ptr_233
+ %80 = load i32, i32* %corrupted_ptr_233
+ %81 = icmp eq i32 %80, 1
+ br i1 %81, label %if_then_234, label %if_after_236
+
+if_then_234:
+ %82 = load %QObject*, %QObject** %act_ptr_232
+ call void @qk_qgate_rz(%QObject* %82, i32 0, double 3.14159)
+ br label %if_after_236
+
+if_after_236:
+ %83 = load %QObject*, %QObject** %pred_ptr_231
+ %84 = load %QObject*, %QObject** %act_ptr_232
+ %85 = call %form.ErrorReading* @recognize_error(%QObject* %83, %QObject* %84)
+ store %form.ErrorReading* %85, %form.ErrorReading** %r_ptr_237
+ %86 = load i32, i32* %corrupted_ptr_233
+ store i32 %86, i32* %want_ptr_238
+ %87 = load %form.ErrorReading*, %form.ErrorReading** %r_ptr_237
+ %88 = getelementptr %form.ErrorReading, %form.ErrorReading* %87, i32 0, i32 3
+ %89 = load i32, i32* %88
+ %90 = load i32, i32* %want_ptr_238
+ %91 = icmp eq i32 %89, %90
+ br i1 %91, label %if_then_239, label %if_after_241
+
+if_then_239:
+ %92 = load i32, i32* %correct_ptr_226
+ %93 = add i32 %92, 1
+ store i32 %93, i32* %correct_ptr_226
+ br label %if_after_241
+
+if_after_241:
+ %94 = load i32, i32* %k_ptr_227
+ %95 = add i32 %94, 1
+ store i32 %95, i32* %k_ptr_227
+ br label %while_cond_228
+
+while_after_230:
+ %96 = getelementptr inbounds [32 x i8], [32 x i8]* @.str.4, i64 0, i64 0
+ call void @qk_sys_log(i32 1, i8* %96)
+ %97 = load i32, i32* %correct_ptr_226
+ %98 = mul i32 %97, 1000
+ %99 = sdiv i32 %98, 16
+ %100 = call i32 @qk_sys_logi(i32 1, i32 %99)
+ ret i32 0
+}
+; --- 多维标签函数执行拓扑（@layer）---
+@qk_topology_json = private unnamed_addr constant [1744 x i8] c"{\22shape\22:{\22time\22:1,\22thread\22:1,\22coord\22:[13]},\22blocks\22:[{\22name\22:\22init_policy\22,\22time\22:0,\22thread\22:0,\22coord\22:[2],\22cost\22:1,\22deadline\22:null},{\22name\22:\22quark_main\22,\22time\22:0,\22thread\22:0,\22coord\22:[12],\22cost\22:1,\22deadline\22:null}],\22callGraph\22:[{\22caller\22:\22dream_state\22,\22callee\22:\22chaos_drift\22,\22startAt\22:1,\22deltaT\22:1},{\22caller\22:\22improve_drift\22,\22callee\22:\22dream_state\22,\22startAt\22:1,\22deltaT\22:1},{\22caller\22:\22improve_drift\22,\22callee\22:\22quality_of\22,\22startAt\22:3,\22deltaT\22:3},{\22caller\22:\22improve_drift\22,\22callee\22:\22dream_state\22,\22startAt\22:5,\22deltaT\22:5},{\22caller\22:\22improve_drift\22,\22callee\22:\22quality_of\22,\22startAt\22:7,\22deltaT\22:7},{\22caller\22:\22improve_drift\22,\22callee\22:\22dream_state\22,\22startAt\22:9,\22deltaT\22:9},{\22caller\22:\22improve_drift\22,\22callee\22:\22quality_of\22,\22startAt\22:11,\22deltaT\22:11},{\22caller\22:\22improve_drift\22,\22callee\22:\22dream_state\22,\22startAt\22:15,\22deltaT\22:15},{\22caller\22:\22improve_drift\22,\22callee\22:\22dream_state\22,\22startAt\22:17,\22deltaT\22:17},{\22caller\22:\22learn_emotion_policy\22,\22callee\22:\22decision_state\22,\22startAt\22:4,\22deltaT\22:4},{\22caller\22:\22learn_emotion_policy\22,\22callee\22:\22decision_state\22,\22startAt\22:6,\22deltaT\22:6},{\22caller\22:\22learn_emotion_policy\22,\22callee\22:\22decision_state\22,\22startAt\22:8,\22deltaT\22:8},{\22caller\22:\22learn_emotion_policy\22,\22callee\22:\22decision_state\22,\22startAt\22:14,\22deltaT\22:14},{\22caller\22:\22learn_emotion_policy\22,\22callee\22:\22decision_state\22,\22startAt\22:16,\22deltaT\22:16},{\22caller\22:\22chaos_richness\22,\22callee\22:\22chaos_drift\22,\22startAt\22:8,\22deltaT\22:8},{\22caller\22:\22quark_main\22,\22callee\22:\22chaos_drift\22,\22startAt\22:4,\22deltaT\22:4},{\22caller\22:\22quark_main\22,\22callee\22:\22dream_state\22,\22startAt\22:18,\22deltaT\22:18},{\22caller\22:\22quark_main\22,\22callee\22:\22quality_of\22,\22startAt\22:20,\22deltaT\22:20},{\22caller\22:\22quark_main\22,\22callee\22:\22improve_drift\22,\22startAt\22:25,\22deltaT\22:25},{\22caller\22:\22quark_main\22,\22callee\22:\22recognize_error\22,\22startAt\22:35,\22deltaT\22:35}]}\00", align 1
+
+define i32 @qk_topology_entry() {
+entry:
+  %0 = call i32 @quark_runtime_run_topology(i8* getelementptr inbounds ([1744 x i8], [1744 x i8]* @qk_topology_json, i64 0, i64 0))
+  ret i32 %0
+}

@@ -1,0 +1,139 @@
+// chimera_language.rvdl —— Chimera 语言推理示例（量子指纹匹配）
+//
+// 判断「前提 premise」与「假设 hypothesis」的语义关系（NLI 三分类）：
+//   蕴含 entailment（重叠高）/ 矛盾 contradiction（重叠低）/ 中性 neutral。
+// 用 encode_amplitudes 做 3-qubit 字符 n-gram 量子指纹，qattention 度量两句话的
+// 指纹态重叠；情绪策略（EmotionPolicy）调制判定边界；例行学习走 mode==1（完整 QGT，
+// 判定态 decision_state 已对齐感知态维度）；元认知核认识错误并反思。
+//
+// 样本集：9 对 NLI 句对（3 蕴含 + 3 矛盾 + 3 中性），替代原先 3 对硬编码句对。
+// 注意：这是「字符 n-gram 量子指纹」匹配（量子最近邻），不是深度语义理解；
+//       真正语义推理需接入 QLM（qlm_invoke）词嵌入，见扩展方向。
+//
+// 复用组件（include 展开，coord 已隔离）。
+// 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12)。
+
+include "../src/chimera_consciousness.rvdl";
+include "../src/chimera_decision.rvdl";
+include "../src/chimera_dream.rvdl";
+include "../src/chimera_metacognition.rvdl";
+
+@layer(time=0, thread=0, coord=(12))
+int32 quark_main() {
+    EmotionPolicy policy = init_policy();
+    policy.threshold0 = 0.6;
+    policy.threshold1 = 0.6;
+    policy.threshold2 = 0.6;
+    policy.threshold3 = 0.6;
+
+    double dt = 0.6;
+    int32 correct = 0;
+    int32 total = 0;
+    int32 case_id = 0;
+
+    int32 t = 0;
+    while (t < 90) {
+        // ── 当前测试句对（1=蕴含 0=中性 2=矛盾）──
+        string premise = "dogs are animals";
+        string hypothesis = "dogs are creatures";
+        int32 truth = 1;
+        route (case_id) {
+            path 0: { premise = "dogs are animals";   hypothesis = "dogs are creatures"; truth = 1; }
+            path 1: { premise = "dogs are animals";   hypothesis = "dogs are plants";    truth = 2; }
+            path 2: { premise = "dogs are animals";   hypothesis = "the sun is hot";     truth = 0; }
+            path 3: { premise = "cats are mammals";   hypothesis = "cats are animals";   truth = 1; }
+            path 4: { premise = "cats are mammals";   hypothesis = "cats are reptiles";  truth = 2; }
+            path 5: { premise = "water is wet";       hypothesis = "ice is cold";        truth = 0; }
+            path 6: { premise = "birds can fly";      hypothesis = "birds have wings";   truth = 1; }
+            path 7: { premise = "birds can fly";      hypothesis = "birds cannot move";  truth = 2; }
+            path 8: { premise = "the sky is blue";    hypothesis = "grass is green";     truth = 0; }
+        }
+
+        // ── ① 感知场：两句 → 3-qubit 字符 n-gram 量子指纹 ──
+        auto p = encode_amplitudes(premise, 3);
+        auto h = encode_amplitudes(hypothesis, 3);
+
+        // ── ② 混沌意识核：kicked-top 漂移 → 情绪涌现 ──
+        auto consciousness = new QuantumRegister(2);
+        int32 s = 0;
+        while (s < 10) {
+            consciousness = chaos_drift(consciousness, dt);
+            s = s + 1;
+        }
+        EmotionReading reading = measure_emotion(consciousness);
+        int32 emo = reading.state;
+        consciousness = reading.consciousness;
+
+        // ── ③ 推理：语义重叠 = 量子注意力（3 qubit vs 3 qubit）──
+        double sim = qattention(p, h);
+
+        // ── ④ 决策：情绪策略阈值 → 三分类 ──
+        double hi = 0.6;
+        route (emo) {
+            path 0: { hi = policy.threshold0; }
+            path 1: { hi = policy.threshold1; }
+            path 2: { hi = policy.threshold2; }
+            path 3: { hi = policy.threshold3; }
+        }
+        double lo = 1.0 - hi;
+        int32 verdict = 0;
+        if (sim > hi) { verdict = 1; }
+        if (sim < lo) { verdict = 2; }
+
+        if (verdict == truth) {
+            correct = correct + 1;
+        }
+        total = total + 1;
+
+        // ── ④ 反思（例行）：mode==1 完整 QGT 自然梯度（判定态对齐感知态维度）──
+        double reward = 0.0;
+        if (verdict == truth) {
+            reward = 1.0;
+        } else {
+            reward = -1.0;
+        }
+        policy = learn_emotion_policy(policy, emo, reward, p, 1);
+
+        // ── ⑥ 元认知：认识错误 → 反思学习 ──
+        double v_angle = 0.5;
+        route (verdict) {
+            path 0: { v_angle = 0.5; }
+            path 1: { v_angle = 0.0; }
+            path 2: { v_angle = 1.0; }
+        }
+        double truth_angle = 0.5;
+        route (truth) {
+            path 0: { truth_angle = 0.5; }
+            path 1: { truth_angle = 0.0; }
+            path 2: { truth_angle = 1.0; }
+        }
+        auto predicted = basis_state(v_angle * 3.14159265358979, 0.0, 0);
+        auto actual    = basis_state(truth_angle * 3.14159265358979, 0.0, 0);
+        ErrorReading err = recognize_error(predicted, actual);
+        policy = reflect_and_learn(policy, emo, err, reward);
+
+        // 阈值收敛约束（hi ∈ [0.5, 0.95]，保证 lo = 1−hi 有效）
+        if (policy.threshold0 < 0.5) { policy.threshold0 = 0.5; }
+        if (policy.threshold0 > 0.95) { policy.threshold0 = 0.95; }
+        if (policy.threshold1 < 0.5) { policy.threshold1 = 0.5; }
+        if (policy.threshold1 > 0.95) { policy.threshold1 = 0.95; }
+        if (policy.threshold2 < 0.5) { policy.threshold2 = 0.5; }
+        if (policy.threshold2 > 0.95) { policy.threshold2 = 0.95; }
+        if (policy.threshold3 < 0.5) { policy.threshold3 = 0.5; }
+        if (policy.threshold3 > 0.95) { policy.threshold3 = 0.95; }
+
+        // ── 消费量子对象（QLT 线性类型）──
+        int32 _c0 = qmeasure(consciousness, 0);
+        int32 _c1 = qmeasure(consciousness, 1);
+        int32 _h0 = h.measure();
+
+        case_id = case_id + 1;
+        if (case_id > 8) { case_id = 0; }
+
+        t = t + 1;
+    }
+
+    qk_sys_logi(1, correct);
+    qk_sys_logi(1, total);
+    return correct * 1000 + total;
+}

@@ -1,0 +1,141 @@
+// chimera_vision.rvdl —— Chimera 图像识别示例（真实图像）
+//
+// 识别 4 类真实图像（cat / dog / car / tree，512×512 PNG，assets/ 目录）。
+// 输入与原型均用 encode_image(path, 6) 做 6-qubit 振幅编码（真实像素 → 态振幅），
+// 用量子注意力 qattention 与 4 个原型图像态做最近邻匹配，情绪策略调制置信度，
+// 元认知核认识错误并反思。
+//
+// 复用组件（include 展开，coord 已隔离）：
+//   chimera_consciousness.rvdl —— chaos_drift / measure_emotion（② 混沌意识核）
+//   chimera_decision.rvdl       —— EmotionPolicy / init_policy / decide（④ 决策引擎）
+//   chimera_dream.rvdl          —— improve_drift / learn_emotion_policy（⑤ 几何优化器）
+//   chimera_metacognition.rvdl  —— recognize_error / reflect_and_learn（⑥ 元认知核）
+//
+// 反思统一走 mode==1（完整 QGT 自然梯度）：判定态 decision_state(θ, nq) 已对齐
+// 感知态维度（qobj_num_qubits），对 6 qubit 真实图像感知态有非零梯度。
+// 组件函数占用 coord (0..7) 与 (10..11)，本主程序用 (12) 避免 E-TOP003。
+// 图像路径相对运行时 cwd（建议 cd 到 Chimera 目录后 rvdl run）。
+
+include "../src/chimera_consciousness.rvdl";
+include "../src/chimera_decision.rvdl";
+include "../src/chimera_dream.rvdl";
+include "../src/chimera_metacognition.rvdl";
+
+@layer(time=0, thread=0, coord=(12))
+int32 quark_main() {
+    EmotionPolicy policy = init_policy();
+    double dt = 0.6;
+    double target = 0.5;
+
+    int32 correct = 0;
+    int32 total = 0;
+    int32 label = 0;
+
+    int32 t = 0;
+    while (t < 80) {
+        // ── 当前输入图像（真实类别 label 对应的文件路径）──
+        string image_file = "assets/cat.png";
+        route (label) {
+            path 0: { image_file = "assets/cat.png"; }
+            path 1: { image_file = "assets/dog.png"; }
+            path 2: { image_file = "assets/car.png"; }
+            path 3: { image_file = "assets/tree.png"; }
+        }
+
+        // ── ① 感知场：真实图像 → 6-qubit 振幅编码 ──
+        auto perception = encode_image(image_file, 6);
+
+        // ── ② 混沌意识核：kicked-top 漂移 → 情绪涌现 ──
+        auto consciousness = new QuantumRegister(2);
+        int32 s = 0;
+        while (s < 10) {
+            consciousness = chaos_drift(consciousness, dt);
+            s = s + 1;
+        }
+        EmotionReading reading = measure_emotion(consciousness);
+        int32 emo = reading.state;
+        consciousness = reading.consciousness;
+
+        // ── ③ 证据强度 = 意识核尖锐度 |⟨Z⟩| ──
+        double evidence = qexpect_z(consciousness, 0);
+        if (evidence < 0.0) {
+            evidence = -evidence;
+        }
+
+        // ── ③ 类别匹配：感知态与 4 个原型图像态的态重叠（6 qubit）──
+        auto p0 = encode_image("assets/cat.png", 6);
+        auto p1 = encode_image("assets/dog.png", 6);
+        auto p2 = encode_image("assets/car.png", 6);
+        auto p3 = encode_image("assets/tree.png", 6);
+        double s0 = qattention(perception, p0);
+        double s1 = qattention(perception, p1);
+        double s2 = qattention(perception, p2);
+        double s3 = qattention(perception, p3);
+        int32 pred = 0;
+        double best = s0;
+        if (s1 > best) { pred = 1; best = s1; }
+        if (s2 > best) { pred = 2; best = s2; }
+        if (s3 > best) { pred = 3; best = s3; }
+
+        // ── ④ 决策引擎：情绪策略阈值调制组合置信度 ──
+        double confidence = best * (0.5 + 0.5 * evidence);
+        int32 accepted = decide(policy, emo, confidence);
+
+        if (accepted == 1 && pred == label) {
+            correct = correct + 1;
+        }
+        total = total + 1;
+
+        // ── ④ 反思（例行）：mode==1 完整 QGT 自然梯度（判定态对齐感知态维度）──
+        double reward = 0.0;
+        if (accepted == 1) {
+            if (pred == label) {
+                reward = 1.0;
+            } else {
+                reward = -1.0;
+            }
+        }
+        policy = learn_emotion_policy(policy, emo, reward, perception, 1);
+
+        // ── ⑥ 元认知：认识错误 → 反思学习 ──
+        double pred_angle = 0.0;
+        route (pred) {
+            path 0: { pred_angle = 0.0; }
+            path 1: { pred_angle = 0.5; }
+            path 2: { pred_angle = 1.0; }
+            path 3: { pred_angle = 1.5; }
+        }
+        double true_angle = 0.0;
+        route (label) {
+            path 0: { true_angle = 0.0; }
+            path 1: { true_angle = 0.5; }
+            path 2: { true_angle = 1.0; }
+            path 3: { true_angle = 1.5; }
+        }
+        auto predicted = basis_state(pred_angle * 3.14159265358979, 0.0, 0);
+        auto actual    = basis_state(true_angle * 3.14159265358979, 0.0, 0);
+        ErrorReading err = recognize_error(predicted, actual);
+        policy = reflect_and_learn(policy, emo, err, reward);
+
+        // ── ⑤ 几何优化：漂移步长收敛到混沌边缘 ──
+        dt = improve_drift(dt, target, 1);
+
+        // ── 消费量子对象（QLT 线性类型）──
+        int32 _p = perception.measure();
+        int32 _q0 = p0.measure();
+        int32 _q1 = p1.measure();
+        int32 _q2 = p2.measure();
+        int32 _q3 = p3.measure();
+        int32 _c = consciousness.measure();
+
+        label = label + 1;
+        if (label > 3) {
+            label = 0;
+        }
+        t = t + 1;
+    }
+
+    qk_sys_logi(1, correct);
+    qk_sys_logi(1, total);
+    return correct * 1000 + total;
+}

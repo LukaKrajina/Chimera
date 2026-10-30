@@ -1,0 +1,891 @@
+; ModuleID = 'quark_module'
+source_filename = "quark_script.qk"
+
+; --- QIR Standard Library ---
+%Qubit = type opaque
+%QObject = type opaque
+%QModel = type opaque
+%QReservoir = type opaque
+; --- 晶格数组类型（lattice<T, B>，吸收 Futhark/Remora/Rust）---
+%Lattice = type opaque
+
+
+declare %QObject* @qk_create_DiracState(i32)
+declare %QObject* @qk_create_BellState()
+declare %QObject* @qk_create_QuantumRegister(i32)
+declare %QObject* @qk_create_basis_state(double, double, i32)
+declare %Qubit* @__quantum__rt__qubit_allocate()
+declare void @__quantum__rt__qubit_release(%Qubit*)
+declare i32 @__quantum__qis__measure_int(%Qubit*)
+
+; --- 扩展量子门（论文3 Hadamard/QFT/MUB + 论文5 Yang-Baxter braid）---
+declare void @__quantum__qis__h(%Qubit*)
+declare void @__quantum__qis__x(%Qubit*)
+declare void @__quantum__qis__y(%Qubit*)
+declare void @__quantum__qis__z(%Qubit*)
+declare void @__quantum__qis__s(%Qubit*)
+declare void @__quantum__qis__t(%Qubit*)
+declare void @__quantum__qis__rz(double, %Qubit*)
+declare void @__quantum__qis__rx(double, %Qubit*)
+declare void @__quantum__qis__ry(double, %Qubit*)
+declare void @__quantum__qis__cnot(%Qubit*, %Qubit*)
+declare void @__quantum__qis__toffoli(%Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__swap(%Qubit*, %Qubit*)
+declare void @__quantum__qis__qft(i32)
+declare void @__quantum__qis__iqft(i32)
+declare void @__quantum__qis__cqft(%Qubit*, i32)
+declare void @__quantum__qis__braid(%Qubit*, %Qubit*)
+declare void @__quantum__qis__cbraid(%Qubit*, %Qubit*, %Qubit*)
+; --- 受控门（可逆编织 @[steer]：cx/ch/crz/cswap）---
+declare void @__quantum__qis__cx(%Qubit*, %Qubit*)
+declare void @__quantum__qis__ch(%Qubit*, %Qubit*)
+declare void @__quantum__qis__crz(%Qubit*, %Qubit*, double)
+declare void @__quantum__qis__cswap(%Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__c_toffoli(%Qubit*, %Qubit*, %Qubit*, %Qubit*)
+declare void @__quantum__qis__apply_noise(%Qubit*, i32, double)
+declare i32 @__quantum__qis__measure_basis(%Qubit*, i8)
+declare i32 @qk_measure_object(%QObject*)
+declare %QObject* @qk_extract_qubit(%QObject*, i32)
+declare void @qk_release_object(%QObject*)
+
+; --- QML&QKM Native Trampolines ---
+declare %QObject* @qk_encode_text(i8*)
+declare %QObject* @qk_encode_amplitudes(i8*, i32)
+declare %QObject* @qk_encode_image(i8*, i32)
+declare %QObject* @qk_encode_adaptive(i8*)
+declare %QModel* @qk_qlm_invoke(%QObject*, i32, double)
+declare void @qk_qkm_export(%QModel*, i8*)
+
+; --- Quark AI Standard Library ABI ---
+declare %QModel* @qk_qlm_load(i8*)
+declare void @qk_qlm_forward(%QModel*, %QObject*)
+declare %QObject* @qk_encode_string(i8*)
+declare i8* @qk_decode_string(%QObject*)
+
+; --- QBNS Mind-Controlled Programming Trampolines ---
+declare %QObject* @qk_mind_read(i8*)
+declare void @qk_mind_train(%QObject*, i32, double)
+declare void @qk_mind_feedback(%QObject*)
+
+; --- VedaROS QLM Trampolines ---
+declare void @qk_veda_qlm_train(%QObject*, i32, double)
+
+; --- QRC Quantum Reservoir ABI ---
+declare %QReservoir* @qk_qrc_new(i32, i32)
+declare %QReservoir* @qk_qrc_new_ex(i32, i32, i32)
+declare void @qk_qrc_train(%QReservoir*, i32, double)
+declare void @qk_qrc_train_ex(%QReservoir*, i32, double, double*, double*, i32, i32, i32)
+declare %QObject* @qk_qrc_probe(%QReservoir*, %QObject*)
+declare %QObject* @qk_qrc_predict(%QReservoir*, %QObject*)
+declare void @qk_qrc_release(%QReservoir*)
+
+; --- TQNF Topological Quantum Neural Field ABI ---
+declare i32 @qk_dla_dim(i8*, i32)
+declare double @qk_qstate_entropy(%QObject*)
+declare double @qk_qstate_fidelity(%QObject*, %QObject*)
+declare double @qk_qattention(%QObject*, %QObject*)
+declare double @qk_shannon4(i32, i32, i32, i32)
+declare double @qk_shannon8(i32, i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_qgate_h(%QObject*, i32)
+declare void @qk_qgate_x(%QObject*, i32)
+declare void @qk_qgate_rz(%QObject*, i32, double)
+declare void @qk_qgate_cnot(%QObject*, i32, i32)
+declare double @qk_qexpect_z(%QObject*, i32)
+declare i32 @qk_qmeasure(%QObject*, i32)
+declare i32 @qk_qobj_num_qubits(%QObject*)
+declare void @qk_qgate_cnot_pair(%QObject*, i32, %QObject*, i32)
+
+; --- Retrocausal Capacity (quantum channel back-in-time ability) ---
+declare double @qk_retrocausal_imax(i32, double)
+declare double @qk_retrocausal_idoe(i32, double)
+declare double @qk_retrocausal_q_capacity(i32, double)
+declare double @qk_retrocausal_c_capacity(i32, double)
+declare double @qk_retrocausal_q_one_shot(i32, double, double)
+declare double @qk_retrocausal_gain(i32, double)
+declare double @qk_retrocausal_deformed(i32, double, double)
+
+; --- Retrocausal CTC (tachyon KK doubled-dimension closed timelike curve) ---
+declare double @qk_retrocausal_ctc_q_capacity(i32, double, double, double)
+declare double @qk_retrocausal_ctc_c_capacity(i32, double, double, double)
+declare double @qk_retrocausal_ctc_gain(i32, double, double, double)
+declare double @qk_retrocausal_ctc_dephasing(double)
+
+; --- Non-Euclidean hypersurface geodesic primitives ---
+declare double @qk_geodesic_distance(%QObject*, %QObject*)
+declare double @qk_inversion(double)
+declare double @qk_hyperbolic_metric(double)
+declare double @qk_hyperbolic_distance(double, double)
+
+; --- Other ---
+declare double @qk_surrogate(double, double, double)
+declare double @qk_tanh_quantize(double, double, i32)
+declare double @qk_lif_step(double, double, double, double)
+declare double @qk_mellowmax2(double, double, double)
+declare double @qk_logsumexp2(double, double, double)
+declare double @qk_boltzmann2(double, double, double)
+declare double @qk_tnorm_luk(double, double)
+declare double @qk_tnorm_prod(double, double)
+declare double @qk_tnorm_godel(double, double)
+declare double @qk_polymer_weight(double, double, double)
+declare double @qk_polymer_mix_bound(double, double)
+
+; --- 晶格数组 ABI（lattice<T, B>，首版 int32 元素 / 1D-2D）---
+declare %Lattice* @qk_lattice_new(i32, i32, i32, i32)
+declare void @qk_lattice_free(%Lattice*)
+declare i32 @qk_lattice_ref(%Lattice*, i32, i32)
+declare void @qk_lattice_set(%Lattice*, i32, i32, i32)
+declare i32 @qk_lattice_rank(%Lattice*)
+declare i32 @qk_lattice_size(%Lattice*, i32)
+declare i32 @qk_lattice_boundary(%Lattice*)
+
+; --- 经典 GUI / 图形引擎 ABI（cgui_* / cgfx_*）---
+declare i32 @qk_cgui_init(i32, i32, i8*)
+declare i32 @qk_cgui_should_close()
+declare void @qk_cgui_begin_frame()
+declare void @qk_cgui_end_frame()
+declare i32 @qk_cgui_button(i8*)
+declare void @qk_cgui_text(i8*)
+declare void @qk_cgui_text_int(i32)
+declare void @qk_cgui_beep(i32, i32)
+declare i32 @qk_cgui_width()
+declare i32 @qk_cgui_height()
+declare void @qk_cgui_panel(i32, i32, i32, i32, i8*)
+declare void @qk_cgui_panel_end()
+declare void @qk_cgui_row(i32, i32)
+declare i32 @qk_cgui_mouse_x()
+declare i32 @qk_cgui_mouse_y()
+declare i32 @qk_cgui_mouse_left_clicked()
+declare void @qk_cgfx_rect(i32, i32, i32, i32, i32)
+declare void @qk_cgfx_line(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_ellipse(i32, i32, i32, i32, i32)
+declare void @qk_cgfx_triangle(i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_rect_a(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_line_a(i32, i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_ellipse_a(i32, i32, i32, i32, i32, i32)
+declare void @qk_cgfx_triangle_a(i32, i32, i32, i32, i32, i32, i32, i32)
+
+; --- QCOS Syscall ABI + Heap ---
+declare i32 @qk_sys_call(i32, i32, i32, i32)
+declare double @qk_sys_calld(i32, double, double)
+declare void @qk_sys_log(i32, i8*)
+declare i32 @qk_sys_logi(i32, i32)
+declare i8* @qk_gc_alloc(i64)
+declare i8* @qk_sys_callp(i32, i64, i64, i64)
+declare void @qk_gc_free(i8*)
+; --- 字符串遍历 / libc 子集 ---
+declare i32 @strlen(i8*)
+declare i8* @malloc(i64)
+declare void @free(i8*)
+declare i8* @memset(i8*, i32, i64)
+declare i8* @memcpy(i8*, i8*, i64)
+declare i32 @kglobals_addr()
+
+; --- QMS 数值内核 ---
+declare double @qk_qms_gap(i32, double, double)
+declare double @qk_mix_bound(double, double, double)
+declare double @qk_qms_conc(double, double)
+
+; --- QChain 量子区块链 ABI ---
+declare i8* @qk_qchain_wallet()
+declare i64 @qk_qchain_balance(i8*)
+declare void @qk_qchain_mint(i8*, i64)
+declare i32 @qk_qchain_transfer(i8*, i8*, i64)
+declare i32 @qk_qchain_mine()
+declare i32 @qk_qchain_height()
+declare i32 @qk_qchain_verify()
+declare i8* @qk_qchain_qkd(i32)
+declare i32 @qk_qchain_qdba(i32)
+declare %QObject* @qk_qchain_coin_mint(i32)
+declare i32 @qk_qchain_coin_verify(%QObject*)
+
+; --- QChain 密码原语 / 抗超时空 / 时空加密 ABI ---
+declare i8* @qk_qchain_sha3(i8*)
+declare i8* @qk_qchain_hmac(i8*, i8*)
+declare i8* @qk_qchain_hash_unicode(i8*)
+declare i8* @qk_qchain_sign(i8*)
+declare i32 @qk_qchain_sign_verify(i8*, i8*)
+declare i8* @qk_qchain_sign_pubkey()
+declare i8* @qk_qchain_mlkem_encaps(i8*)
+declare i8* @qk_qchain_mlkem_decaps(i8*, i8*)
+declare i32 @qk_qchain_causal_verify()
+declare i8* @qk_qchain_cipher_encrypt(i64, i8*)
+declare i8* @qk_qchain_cipher_decrypt(i64, i8*)
+
+; --- 多维标签函数执行拓扑（@layer）调度 ABI ---
+declare i32 @quark_runtime_run_topology(i8*)
+; --- 并发线程（spawn）ABI ---
+declare void @qk_spawn(i8*, i8*)
+
+
+define %QObject* @mipt_drive(%QObject* %arg0, double %arg1, i32 %arg2, i32 %arg3) {
+entry:
+ %state_ptr = alloca %QObject*
+ %dt_ptr = alloca double
+ %steps_ptr = alloca i32
+ %measure_every_ptr = alloca i32
+ %k_ptr_1 = alloca i32
+ %cnt_ptr_2 = alloca i32
+ %n_ptr_6 = alloca i32
+ %i_ptr_7 = alloca i32
+ %j_ptr_11 = alloca i32
+ %__ptr_21 = alloca i32
+ store %QObject* %arg0, %QObject** %state_ptr
+ store double %arg1, double* %dt_ptr
+ store i32 %arg2, i32* %steps_ptr
+ store i32 %arg3, i32* %measure_every_ptr
+ store i32 0, i32* %k_ptr_1
+ store i32 0, i32* %cnt_ptr_2
+ br label %while_cond_3
+
+while_cond_3:
+ %1 = load i32, i32* %k_ptr_1
+ %2 = load i32, i32* %steps_ptr
+ %3 = icmp slt i32 %1, %2
+ br i1 %3, label %while_body_4, label %while_after_5
+
+while_body_4:
+ %4 = load %QObject*, %QObject** %state_ptr
+ %5 = call i32 @qk_qobj_num_qubits(%QObject* %4)
+ store i32 %5, i32* %n_ptr_6
+ store i32 0, i32* %i_ptr_7
+ br label %while_cond_8
+
+while_cond_8:
+ %6 = load i32, i32* %i_ptr_7
+ %7 = load i32, i32* %n_ptr_6
+ %8 = icmp slt i32 %6, %7
+ br i1 %8, label %while_body_9, label %while_after_10
+
+while_body_9:
+ %9 = load %QObject*, %QObject** %state_ptr
+ %10 = load i32, i32* %i_ptr_7
+ call void @qk_qgate_h(%QObject* %9, i32 %10)
+ %11 = load %QObject*, %QObject** %state_ptr
+ %12 = load i32, i32* %i_ptr_7
+ %13 = load double, double* %dt_ptr
+ %14 = load i32, i32* %i_ptr_7
+ %15 = sitofp i32 %14 to double
+ %16 = fmul double 0.1, %15
+ %17 = fadd double 1.61803398874989, %16
+ %18 = fmul double %13, %17
+ call void @qk_qgate_rz(%QObject* %11, i32 %12, double %18)
+ %19 = load i32, i32* %i_ptr_7
+ %20 = add i32 %19, 1
+ store i32 %20, i32* %i_ptr_7
+ br label %while_cond_8
+
+while_after_10:
+ store i32 0, i32* %j_ptr_11
+ br label %while_cond_12
+
+while_cond_12:
+ %21 = load i32, i32* %j_ptr_11
+ %22 = load i32, i32* %n_ptr_6
+ %23 = sub i32 %22, 1
+ %24 = icmp slt i32 %21, %23
+ br i1 %24, label %while_body_13, label %while_after_14
+
+while_body_13:
+ %25 = load %QObject*, %QObject** %state_ptr
+ %26 = load i32, i32* %j_ptr_11
+ %27 = load i32, i32* %j_ptr_11
+ %28 = add i32 %27, 1
+ call void @qk_qgate_cnot(%QObject* %25, i32 %26, i32 %28)
+ %29 = load i32, i32* %j_ptr_11
+ %30 = add i32 %29, 1
+ store i32 %30, i32* %j_ptr_11
+ br label %while_cond_12
+
+while_after_14:
+ %31 = load i32, i32* %measure_every_ptr
+ %32 = icmp sgt i32 %31, 0
+ br i1 %32, label %if_then_15, label %if_after_17
+
+if_then_15:
+ %33 = load i32, i32* %cnt_ptr_2
+ %34 = load i32, i32* %measure_every_ptr
+ %35 = icmp sge i32 %33, %34
+ br i1 %35, label %if_then_18, label %if_after_20
+
+if_then_18:
+ %36 = load %QObject*, %QObject** %state_ptr
+ %37 = call i32 @qk_qmeasure(%QObject* %36, i32 0)
+ store i32 %37, i32* %__ptr_21
+ store i32 0, i32* %cnt_ptr_2
+ br label %if_after_20
+
+if_after_20:
+ %38 = load i32, i32* %cnt_ptr_2
+ %39 = add i32 %38, 1
+ store i32 %39, i32* %cnt_ptr_2
+ br label %if_after_17
+
+if_after_17:
+ %40 = load i32, i32* %k_ptr_1
+ %41 = add i32 %40, 1
+ store i32 %41, i32* %k_ptr_1
+ br label %while_cond_3
+
+while_after_5:
+ %42 = load %QObject*, %QObject** %state_ptr
+ ret %QObject* %42
+}
+
+define double @measurement_entropy_flow(double %arg0, i32 %arg1, double %arg2) {
+entry:
+ %dt_ptr = alloca double
+ %steps_ptr = alloca i32
+ %s_prev_ptr = alloca double
+ %s_now_ptr_22 = alloca double
+ %flow_ptr_23 = alloca double
+ store double %arg0, double* %dt_ptr
+ store i32 %arg1, i32* %steps_ptr
+ store double %arg2, double* %s_prev_ptr
+ %1 = load double, double* %dt_ptr
+ %2 = load i32, i32* %steps_ptr
+ %3 = call double @sample_entropy(double %1, i32 %2)
+ store double %3, double* %s_now_ptr_22
+ %4 = load double, double* %s_now_ptr_22
+ %5 = load double, double* %s_prev_ptr
+ %6 = fsub double %4, %5
+ store double %6, double* %flow_ptr_23
+ %7 = load double, double* %flow_ptr_23
+ %8 = fcmp olt double %7, 0.0
+ br i1 %8, label %if_then_24, label %if_after_26
+
+if_then_24:
+ %9 = load double, double* %flow_ptr_23
+ %10 = fsub double -0.0, %9
+ store double %10, double* %flow_ptr_23
+ br label %if_after_26
+
+if_after_26:
+ %11 = load double, double* %flow_ptr_23
+ ret double %11
+}
+
+define double @entanglement_transition_probe(%QObject* %arg0) {
+entry:
+ %state_ptr = alloca %QObject*
+ %n_ptr_27 = alloca i32
+ %z_ptr_31 = alloca double
+ %cut_ptr_35 = alloca i32
+ %acc_ptr_39 = alloca double
+ %s_ptr_40 = alloca i32
+ store %QObject* %arg0, %QObject** %state_ptr
+ %1 = load %QObject*, %QObject** %state_ptr
+ %2 = call i32 @qk_qobj_num_qubits(%QObject* %1)
+ store i32 %2, i32* %n_ptr_27
+ %3 = load i32, i32* %n_ptr_27
+ %4 = icmp slt i32 %3, 2
+ br i1 %4, label %if_then_28, label %if_after_30
+
+if_then_28:
+ %5 = load %QObject*, %QObject** %state_ptr
+ %6 = call double @qk_qexpect_z(%QObject* %5, i32 0)
+ store double %6, double* %z_ptr_31
+ %7 = load double, double* %z_ptr_31
+ %8 = fcmp olt double %7, 0.0
+ br i1 %8, label %if_then_32, label %if_after_34
+
+if_then_32:
+ %9 = load double, double* %z_ptr_31
+ %10 = fsub double -0.0, %9
+ store double %10, double* %z_ptr_31
+ br label %if_after_34
+
+if_after_34:
+ %11 = load double, double* %z_ptr_31
+ %12 = load %QObject*, %QObject** %state_ptr
+ call void @qk_release_object(%QObject* %12)
+ ret double %11
+
+if_after_30:
+ %13 = load i32, i32* %n_ptr_27
+ %14 = sdiv i32 %13, 2
+ store i32 %14, i32* %cut_ptr_35
+ %15 = load i32, i32* %cut_ptr_35
+ %16 = load i32, i32* %n_ptr_27
+ %17 = icmp sge i32 %15, %16
+ br i1 %17, label %if_then_36, label %if_after_38
+
+if_then_36:
+ %18 = load i32, i32* %n_ptr_27
+ %19 = sub i32 %18, 1
+ store i32 %19, i32* %cut_ptr_35
+ br label %if_after_38
+
+if_after_38:
+ store double 0.0, double* %acc_ptr_39
+ store i32 0, i32* %s_ptr_40
+ br label %while_cond_41
+
+while_cond_41:
+ %20 = load i32, i32* %s_ptr_40
+ %21 = icmp slt i32 %20, 8
+ br i1 %21, label %while_body_42, label %while_after_43
+
+while_body_42:
+ %22 = load %QObject*, %QObject** %state_ptr
+ %23 = load i32, i32* %cut_ptr_35
+ %24 = sub i32 %23, 1
+ %25 = load i32, i32* %cut_ptr_35
+ call void @qk_qgate_cnot(%QObject* %22, i32 %24, i32 %25)
+ %26 = load double, double* %acc_ptr_39
+ %27 = load %QObject*, %QObject** %state_ptr
+ %28 = load i32, i32* %cut_ptr_35
+ %29 = call double @qk_qexpect_z(%QObject* %27, i32 %28)
+ %30 = fadd double %26, %29
+ store double %30, double* %acc_ptr_39
+ %31 = load %QObject*, %QObject** %state_ptr
+ %32 = load i32, i32* %cut_ptr_35
+ %33 = sub i32 %32, 1
+ %34 = load i32, i32* %cut_ptr_35
+ call void @qk_qgate_cnot(%QObject* %31, i32 %33, i32 %34)
+ %35 = load i32, i32* %s_ptr_40
+ %36 = add i32 %35, 1
+ store i32 %36, i32* %s_ptr_40
+ br label %while_cond_41
+
+while_after_43:
+ %37 = load double, double* %acc_ptr_39
+ %38 = fdiv double %37, 8.0
+ store double %38, double* %acc_ptr_39
+ %39 = load double, double* %acc_ptr_39
+ %40 = fcmp olt double %39, 0.0
+ br i1 %40, label %if_then_44, label %if_after_46
+
+if_then_44:
+ %41 = load double, double* %acc_ptr_39
+ %42 = fsub double -0.0, %41
+ store double %42, double* %acc_ptr_39
+ br label %if_after_46
+
+if_after_46:
+ %43 = load double, double* %acc_ptr_39
+ %44 = load %QObject*, %QObject** %state_ptr
+ call void @qk_release_object(%QObject* %44)
+ ret double %43
+}
+
+define double @monitor_rate_scheduler(double %arg0, double %arg1, double %arg2) {
+entry:
+ %rate_ptr = alloca double
+ %entropy_ptr = alloca double
+ %target_ptr = alloca double
+ %grad_ptr_47 = alloca double
+ %new_rate_ptr_48 = alloca double
+ store double %arg0, double* %rate_ptr
+ store double %arg1, double* %entropy_ptr
+ store double %arg2, double* %target_ptr
+ %1 = load double, double* %entropy_ptr
+ %2 = load double, double* %target_ptr
+ %3 = fsub double %1, %2
+ %4 = call double @qk_surrogate(double %3, double 0.0, double 1.0)
+ store double %4, double* %grad_ptr_47
+ %5 = load double, double* %rate_ptr
+ %6 = load double, double* %grad_ptr_47
+ %7 = fmul double 0.05, %6
+ %8 = fsub double %5, %7
+ store double %8, double* %new_rate_ptr_48
+ %9 = load double, double* %new_rate_ptr_48
+ %10 = fcmp olt double %9, 0.0
+ br i1 %10, label %if_then_49, label %if_after_51
+
+if_then_49:
+ store double 0.0, double* %new_rate_ptr_48
+ br label %if_after_51
+
+if_after_51:
+ %11 = load double, double* %new_rate_ptr_48
+ %12 = fcmp ogt double %11, 1.0
+ br i1 %12, label %if_then_52, label %if_after_54
+
+if_then_52:
+ store double 1.0, double* %new_rate_ptr_48
+ br label %if_after_54
+
+if_after_54:
+ %13 = load double, double* %new_rate_ptr_48
+ ret double %13
+}
+
+define double @area_law_estimator(%QObject* %arg0, double %arg1, double %arg2) {
+entry:
+ %state_ptr = alloca %QObject*
+ %boundary_size_ptr = alloca double
+ %volume_size_ptr = alloca double
+ %s_ptr_55 = alloca double
+ %shots_ptr_56 = alloca i32
+ %sh_ptr_57 = alloca i32
+ %e_ptr_61 = alloca double
+ %area_ratio_ptr_65 = alloca double
+ %vol_ratio_ptr_66 = alloca double
+ store %QObject* %arg0, %QObject** %state_ptr
+ store double %arg1, double* %boundary_size_ptr
+ store double %arg2, double* %volume_size_ptr
+ store double 0.0, double* %s_ptr_55
+ store i32 8, i32* %shots_ptr_56
+ store i32 0, i32* %sh_ptr_57
+ br label %while_cond_58
+
+while_cond_58:
+ %1 = load i32, i32* %sh_ptr_57
+ %2 = load i32, i32* %shots_ptr_56
+ %3 = icmp slt i32 %1, %2
+ br i1 %3, label %while_body_59, label %while_after_60
+
+while_body_59:
+ %4 = load %QObject*, %QObject** %state_ptr
+ %5 = call double @qk_qstate_entropy(%QObject* %4)
+ store double %5, double* %e_ptr_61
+ %6 = load double, double* %e_ptr_61
+ %7 = fcmp olt double %6, 0.0
+ br i1 %7, label %if_then_62, label %if_after_64
+
+if_then_62:
+ store double 0.0, double* %e_ptr_61
+ br label %if_after_64
+
+if_after_64:
+ %8 = load double, double* %s_ptr_55
+ %9 = load double, double* %e_ptr_61
+ %10 = fadd double %8, %9
+ store double %10, double* %s_ptr_55
+ %11 = load i32, i32* %sh_ptr_57
+ %12 = add i32 %11, 1
+ store i32 %12, i32* %sh_ptr_57
+ br label %while_cond_58
+
+while_after_60:
+ %13 = load double, double* %s_ptr_55
+ %14 = load i32, i32* %shots_ptr_56
+ %15 = sitofp i32 %14 to double
+ %16 = fdiv double %13, %15
+ store double %16, double* %s_ptr_55
+ %17 = load double, double* %s_ptr_55
+ %18 = load double, double* %boundary_size_ptr
+ %19 = fadd double %18, 0.001
+ %20 = fdiv double %17, %19
+ store double %20, double* %area_ratio_ptr_65
+ %21 = load double, double* %s_ptr_55
+ %22 = load double, double* %volume_size_ptr
+ %23 = fadd double %22, 0.001
+ %24 = fdiv double %21, %23
+ store double %24, double* %vol_ratio_ptr_66
+ %25 = load double, double* %area_ratio_ptr_65
+ %26 = load double, double* %area_ratio_ptr_65
+ %27 = load double, double* %vol_ratio_ptr_66
+ %28 = fadd double %26, %27
+ %29 = fdiv double %25, %28
+ %30 = load %QObject*, %QObject** %state_ptr
+ call void @qk_release_object(%QObject* %30)
+ ret double %29
+}
+
+define double @teleportation_entropy(%QObject* %arg0, %QObject* %arg1) {
+entry:
+ %a_ptr = alloca %QObject*
+ %b_ptr = alloca %QObject*
+ %acc_ptr_67 = alloca double
+ %s_ptr_68 = alloca i32
+ %f_ptr_72 = alloca double
+ store %QObject* %arg0, %QObject** %a_ptr
+ store %QObject* %arg1, %QObject** %b_ptr
+ store double 0.0, double* %acc_ptr_67
+ store i32 0, i32* %s_ptr_68
+ br label %while_cond_69
+
+while_cond_69:
+ %1 = load i32, i32* %s_ptr_68
+ %2 = icmp slt i32 %1, 8
+ br i1 %2, label %while_body_70, label %while_after_71
+
+while_body_70:
+ %3 = load %QObject*, %QObject** %a_ptr
+ %4 = load %QObject*, %QObject** %b_ptr
+ %5 = call double @qk_qstate_fidelity(%QObject* %3, %QObject* %4)
+ store double %5, double* %f_ptr_72
+ %6 = load double, double* %f_ptr_72
+ %7 = fcmp olt double %6, 0.0
+ br i1 %7, label %if_then_73, label %if_after_75
+
+if_then_73:
+ store double 0.0, double* %f_ptr_72
+ br label %if_after_75
+
+if_after_75:
+ %8 = load double, double* %acc_ptr_67
+ %9 = load double, double* %f_ptr_72
+ %10 = fadd double %8, %9
+ store double %10, double* %acc_ptr_67
+ %11 = load i32, i32* %s_ptr_68
+ %12 = add i32 %11, 1
+ store i32 %12, i32* %s_ptr_68
+ br label %while_cond_69
+
+while_after_71:
+ %13 = load double, double* %acc_ptr_67
+ %14 = fdiv double %13, 8.0
+ %15 = fsub double 1.0, %14
+ %16 = load %QObject*, %QObject** %a_ptr
+ call void @qk_release_object(%QObject* %16)
+ %17 = load %QObject*, %QObject** %b_ptr
+ call void @qk_release_object(%QObject* %17)
+ ret double %15
+}
+
+define %QObject* @midcircuit_reset(%QObject* %arg0, i32 %arg1) {
+entry:
+ %state_ptr = alloca %QObject*
+ %qubit_idx_ptr = alloca i32
+ %b_ptr_76 = alloca i32
+ store %QObject* %arg0, %QObject** %state_ptr
+ store i32 %arg1, i32* %qubit_idx_ptr
+ %1 = load %QObject*, %QObject** %state_ptr
+ %2 = load i32, i32* %qubit_idx_ptr
+ %3 = call i32 @qk_qmeasure(%QObject* %1, i32 %2)
+ store i32 %3, i32* %b_ptr_76
+ %4 = load i32, i32* %b_ptr_76
+ %5 = icmp eq i32 %4, 1
+ br i1 %5, label %if_then_77, label %if_after_79
+
+if_then_77:
+ %6 = load %QObject*, %QObject** %state_ptr
+ %7 = load i32, i32* %qubit_idx_ptr
+ call void @qk_qgate_x(%QObject* %6, i32 %7)
+ br label %if_after_79
+
+if_after_79:
+ %8 = load %QObject*, %QObject** %state_ptr
+ ret %QObject* %8
+}
+
+define double @phase_transition_detector(double %arg0, i32 %arg1) {
+entry:
+ %dt_ptr = alloca double
+ %steps_ptr = alloca i32
+ %s_prev_ptr_80 = alloca double
+ %s_curr_ptr_81 = alloca double
+ %s_next_ptr_82 = alloca double
+ %d1_ptr_83 = alloca double
+ %d2_ptr_84 = alloca double
+ %curvature_ptr_85 = alloca double
+ store double %arg0, double* %dt_ptr
+ store i32 %arg1, i32* %steps_ptr
+ %1 = load double, double* %dt_ptr
+ %2 = fsub double %1, 0.05
+ %3 = load i32, i32* %steps_ptr
+ %4 = call double @sample_entropy(double %2, i32 %3)
+ store double %4, double* %s_prev_ptr_80
+ %5 = load double, double* %dt_ptr
+ %6 = load i32, i32* %steps_ptr
+ %7 = call double @sample_entropy(double %5, i32 %6)
+ store double %7, double* %s_curr_ptr_81
+ %8 = load double, double* %dt_ptr
+ %9 = fadd double %8, 0.05
+ %10 = load i32, i32* %steps_ptr
+ %11 = call double @sample_entropy(double %9, i32 %10)
+ store double %11, double* %s_next_ptr_82
+ %12 = load double, double* %s_curr_ptr_81
+ %13 = load double, double* %s_prev_ptr_80
+ %14 = fsub double %12, %13
+ store double %14, double* %d1_ptr_83
+ %15 = load double, double* %s_next_ptr_82
+ %16 = load double, double* %s_curr_ptr_81
+ %17 = fsub double %15, %16
+ store double %17, double* %d2_ptr_84
+ %18 = load double, double* %d2_ptr_84
+ %19 = load double, double* %d1_ptr_83
+ %20 = fsub double %18, %19
+ store double %20, double* %curvature_ptr_85
+ %21 = load double, double* %curvature_ptr_85
+ %22 = fcmp olt double %21, 0.0
+ br i1 %22, label %if_then_86, label %if_after_88
+
+if_then_86:
+ %23 = load double, double* %curvature_ptr_85
+ %24 = fsub double -0.0, %23
+ store double %24, double* %curvature_ptr_85
+ br label %if_after_88
+
+if_after_88:
+ %25 = load double, double* %curvature_ptr_85
+ ret double %25
+}
+
+define double @sample_entropy(double %arg0, i32 %arg1) {
+entry:
+ %dt_ptr = alloca double
+ %steps_ptr = alloca i32
+ %n0_ptr_89 = alloca i32
+ %n1_ptr_90 = alloca i32
+ %n2_ptr_91 = alloca i32
+ %n3_ptr_92 = alloca i32
+ %shots_ptr_93 = alloca i32
+ %sh_ptr_98 = alloca i32
+ %psi_ptr_99 = alloca %QObject*
+ %k_ptr_100 = alloca i32
+ %b0_ptr_104 = alloca i32
+ %b1_ptr_105 = alloca i32
+ %st_ptr_106 = alloca i32
+ store double %arg0, double* %dt_ptr
+ store i32 %arg1, i32* %steps_ptr
+ store i32 0, i32* %n0_ptr_89
+ store i32 0, i32* %n1_ptr_90
+ store i32 0, i32* %n2_ptr_91
+ store i32 0, i32* %n3_ptr_92
+ store i32 8, i32* %shots_ptr_93
+ store i32 0, i32* %sh_ptr_98
+ br label %for_cond_94
+
+for_cond_94:
+ %1 = load i32, i32* %sh_ptr_98
+ %2 = load i32, i32* %shots_ptr_93
+ %3 = icmp slt i32 %1, %2
+ br i1 %3, label %for_body_95, label %for_after_97
+
+for_body_95:
+ %4 = call %QObject* @qk_create_QuantumRegister(i32 2)
+ store %QObject* %4, %QObject** %psi_ptr_99
+ store i32 0, i32* %k_ptr_100
+ br label %while_cond_101
+
+while_cond_101:
+ %5 = load i32, i32* %k_ptr_100
+ %6 = load i32, i32* %steps_ptr
+ %7 = icmp slt i32 %5, %6
+ br i1 %7, label %while_body_102, label %while_after_103
+
+while_body_102:
+ %8 = load %QObject*, %QObject** %psi_ptr_99
+ call void @qk_qgate_h(%QObject* %8, i32 0)
+ %9 = load %QObject*, %QObject** %psi_ptr_99
+ %10 = load double, double* %dt_ptr
+ %11 = fmul double %10, 1.61803398874989
+ call void @qk_qgate_rz(%QObject* %9, i32 0, double %11)
+ %12 = load %QObject*, %QObject** %psi_ptr_99
+ call void @qk_qgate_h(%QObject* %12, i32 0)
+ %13 = load %QObject*, %QObject** %psi_ptr_99
+ call void @qk_qgate_cnot(%QObject* %13, i32 0, i32 1)
+ %14 = load %QObject*, %QObject** %psi_ptr_99
+ %15 = load double, double* %dt_ptr
+ %16 = fmul double %15, 2.4142135623731
+ call void @qk_qgate_rz(%QObject* %14, i32 1, double %16)
+ %17 = load %QObject*, %QObject** %psi_ptr_99
+ call void @qk_qgate_cnot(%QObject* %17, i32 0, i32 1)
+ %18 = load i32, i32* %k_ptr_100
+ %19 = add i32 %18, 1
+ store i32 %19, i32* %k_ptr_100
+ br label %while_cond_101
+
+while_after_103:
+ %20 = load %QObject*, %QObject** %psi_ptr_99
+ %21 = call i32 @qk_qmeasure(%QObject* %20, i32 0)
+ store i32 %21, i32* %b0_ptr_104
+ %22 = load %QObject*, %QObject** %psi_ptr_99
+ %23 = call i32 @qk_qmeasure(%QObject* %22, i32 1)
+ store i32 %23, i32* %b1_ptr_105
+ %24 = load i32, i32* %b0_ptr_104
+ %25 = mul i32 %24, 2
+ %26 = load i32, i32* %b1_ptr_105
+ %27 = add i32 %25, %26
+ store i32 %27, i32* %st_ptr_106
+ %28 = load i32, i32* %st_ptr_106
+ %29 = icmp eq i32 %28, 0
+ br i1 %29, label %if_then_107, label %if_after_109
+
+if_then_107:
+ %30 = load i32, i32* %n0_ptr_89
+ %31 = add i32 %30, 1
+ store i32 %31, i32* %n0_ptr_89
+ br label %if_after_109
+
+if_after_109:
+ %32 = load i32, i32* %st_ptr_106
+ %33 = icmp eq i32 %32, 1
+ br i1 %33, label %if_then_110, label %if_after_112
+
+if_then_110:
+ %34 = load i32, i32* %n1_ptr_90
+ %35 = add i32 %34, 1
+ store i32 %35, i32* %n1_ptr_90
+ br label %if_after_112
+
+if_after_112:
+ %36 = load i32, i32* %st_ptr_106
+ %37 = icmp eq i32 %36, 2
+ br i1 %37, label %if_then_113, label %if_after_115
+
+if_then_113:
+ %38 = load i32, i32* %n2_ptr_91
+ %39 = add i32 %38, 1
+ store i32 %39, i32* %n2_ptr_91
+ br label %if_after_115
+
+if_after_115:
+ %40 = load i32, i32* %st_ptr_106
+ %41 = icmp eq i32 %40, 3
+ br i1 %41, label %if_then_116, label %if_after_118
+
+if_then_116:
+ %42 = load i32, i32* %n3_ptr_92
+ %43 = add i32 %42, 1
+ store i32 %43, i32* %n3_ptr_92
+ br label %if_after_118
+
+if_after_118:
+ %44 = load %QObject*, %QObject** %psi_ptr_99
+ call void @qk_release_object(%QObject* %44)
+ br label %for_update_96
+
+for_update_96:
+ %45 = load i32, i32* %sh_ptr_98
+ %46 = add i32 %45, 1
+ store i32 %46, i32* %sh_ptr_98
+ br label %for_cond_94
+
+for_after_97:
+ %47 = load i32, i32* %n0_ptr_89
+ %48 = load i32, i32* %n1_ptr_90
+ %49 = load i32, i32* %n2_ptr_91
+ %50 = load i32, i32* %n3_ptr_92
+ %51 = call double @qk_shannon4(i32 %47, i32 %48, i32 %49, i32 %50)
+ ret double %51
+}
+
+define double @test_mipt_probe(double %arg0) {
+entry:
+ %x_ptr = alloca double
+ %q_ptr_119 = alloca %QObject*
+ %r_ptr_120 = alloca double
+ %_a_ptr_121 = alloca i32
+ %_b_ptr_122 = alloca i32
+ store double %arg0, double* %x_ptr
+ %1 = call %QObject* @qk_create_QuantumRegister(i32 2)
+ store %QObject* %1, %QObject** %q_ptr_119
+ %2 = load %QObject*, %QObject** %q_ptr_119
+ %3 = call %QObject* @mipt_drive(%QObject* %2, double 0.6, i32 2, i32 2)
+ store %QObject* %3, %QObject** %q_ptr_119
+ %4 = load %QObject*, %QObject** %q_ptr_119
+ %5 = call double @entanglement_transition_probe(%QObject* %4)
+ store double %5, double* %r_ptr_120
+ %6 = load %QObject*, %QObject** %q_ptr_119
+ %7 = call i32 @qk_qmeasure(%QObject* %6, i32 0)
+ store i32 %7, i32* %_a_ptr_121
+ %8 = load %QObject*, %QObject** %q_ptr_119
+ %9 = call i32 @qk_qmeasure(%QObject* %8, i32 1)
+ store i32 %9, i32* %_b_ptr_122
+ %10 = load double, double* %x_ptr
+ %11 = load double, double* %r_ptr_120
+ %12 = fadd double %10, %11
+ ret double %12
+}
+; --- 多维标签函数执行拓扑（@layer）---
+@qk_topology_json = private unnamed_addr constant [70 x i8] c"{\22shape\22:{\22time\22:1,\22thread\22:1,\22coord\22:[]},\22blocks\22:[],\22callGraph\22:[]}\00", align 1
+
+define i32 @qk_topology_entry() {
+entry:
+  %0 = call i32 @quark_runtime_run_topology(i8* getelementptr inbounds ([70 x i8], [70 x i8]* @qk_topology_json, i64 0, i64 0))
+  ret i32 %0
+}
