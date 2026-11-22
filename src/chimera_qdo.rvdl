@@ -1,0 +1,65 @@
+// chimera_qdo.rvdl —— ④ 发育式自组织（Quantum Developmental Organization）
+//
+// 纯新增模块，不修改任何现有 .rvdl。理论见 docs/quantum-cognition-theory.md §6。
+// C++ 权威实现：Ravendrel/runtime/include/qai/DevelopmentalSelfOrg.hpp
+// 全库原本 prune/grow/spawn/stage/critical_period 零匹配，这是首次引入。
+
+// 临界期退火 T(t) = T0/(1 + t/t_c)
+@layer(time=0, thread=0, coord=(1430))
+export double qdo_temperature(double t, double critical_time, double T0) {
+    if (critical_time < 1.0) { critical_time = 1.0; }
+    return T0 / (1.0 + t / critical_time);
+}
+
+// 内生动机权重 μ(t) = μ0·exp(−t/t_μ) 的二阶 Padé 近似
+@layer(time=0, thread=0, coord=(1431))
+export double qdo_motivation_weight(double t, double decay_time, double mu0) {
+    if (decay_time < 1.0) { decay_time = 1.0; }
+    double x = t / decay_time;
+    return mu0 / (1.0 + x + 0.5 * x * x);
+}
+
+// 生长阈值随发育收紧：τ_g(t) = max(1e-4, 0.02·T(t))
+@layer(time=0, thread=0, coord=(1432))
+export double qdo_growth_threshold(double T) {
+    double v = 0.02 * T;
+    if (v < 0.0001) { v = 0.0001; }
+    return v;
+}
+
+// sqrt 的 Newton 迭代
+@layer(time=0, thread=0, coord=(1433))
+export double qdo_sqrt(double x) {
+    if (x <= 0.0) { return 0.0; }
+    double y = x;
+    if (y > 1.0) { y = 1.0; }
+    int32 i = 0;
+    while (i < 12) {
+        y = 0.5 * (y + x / y);
+        i = i + 1;
+    }
+    return y;
+}
+
+// 定理 5：剪枝误差界 ‖ρ−PρP‖₁ ≤ 2√δ + δ
+@layer(time=0, thread=0, coord=(1434))
+export double qdo_prune_error_bound(double skipped_mass) {
+    return 2.0 * qdo_sqrt(skipped_mass) + skipped_mass;
+}
+
+// 局部 Hebbian 的安全学习率：η < 2/λ_max(QFI)
+@layer(time=0, thread=0, coord=(1435))
+export double qdo_safe_hebbian_lr(double eta, double qfi_bound) {
+    if (qfi_bound <= 0.0) { return eta; }
+    double safe = 1.8 / qfi_bound;
+    if (eta < safe) { return eta; }
+    return safe;
+}
+
+// 阶段结构规模：qubits 随阶段线性增长直到上限
+@layer(time=0, thread=0, coord=(1436))
+export double qdo_stage_qubits(double initial, double stage_index, double max_qubits) {
+    double q = initial + stage_index;
+    if (q > max_qubits) { q = max_qubits; }
+    return q;
+}

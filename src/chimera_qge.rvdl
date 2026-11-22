@@ -1,0 +1,45 @@
+// chimera_qge.rvdl —— ① 神经无死角延伸（Quantum Gap-free Extension）
+//
+// 纯新增模块，不修改任何现有 .rvdl。理论见 docs/quantum-cognition-theory.md §3。
+// C++ 权威实现：Ravendrel/runtime/include/qai/GapFreeGrowth.hpp
+// 这里是可被 MMI_INVOKE（≤4 数字参数）直接调用的标量公式镜像。
+
+// Haar / 2-design 的 Welch 下界 FP_Haar = 2/(d(d+1))
+@layer(time=0, thread=0, coord=(1400))
+export double qge_haar_bound(double d) {
+    return 2.0 / (d * (d + 1.0));
+}
+
+// 可计算盲区 Δ = FP − FP_Haar ≥ 0
+@layer(time=0, thread=0, coord=(1401))
+export double qge_coverage_gap(double frame_pot, double d) {
+    double g = frame_pot - qge_haar_bound(d);
+    if (g < 0.0) { g = 0.0; }
+    return g;
+}
+
+// 结构生长触发：Δ > τ_g
+@layer(time=0, thread=0, coord=(1402))
+export int32 qge_should_extend(double gap, double threshold) {
+    if (gap > threshold) { return 1; }
+    return 0;
+}
+
+// 定理 2 的预期缺口下降：追加生成元 25%，扩 Hilbert 50%
+@layer(time=0, thread=0, coord=(1403))
+export double qge_expected_reduction(double gap, double kind) {
+    if (kind > 0.5) { return gap * 0.5; }
+    return gap * 0.25;
+}
+
+// 延伸后的新维数（扩 n 个 qubit）
+@layer(time=0, thread=0, coord=(1404))
+export double qge_extended_dimension(double d, double extra_qubits) {
+    double out = d;
+    double k = 0.0;
+    while (k < extra_qubits) {
+        out = out * 2.0;
+        k = k + 1.0;
+    }
+    return out;
+}

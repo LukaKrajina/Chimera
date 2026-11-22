@@ -1,0 +1,73 @@
+// chimera_tau.rvdl —— 时间缩微（τ）范式集群（第 30 个范式集群）
+//
+// 数学来源：何庭波《A time scaling theory for multi-layer electronic systems》
+// （ChinaXiv:202605.00224v2，韬定律 / τ scaling）。论文两条核心公式改造到
+// 量子 AI 层（runtime 侧实现见 Ravendrel/runtime/include/qml/TauScale.hpp →
+// TauAbi.hpp，语言内建 tau_*）：
+//
+//   ① 分层复合   τ = f(τ_state, τ_gate, τ_measure, τ_comm)
+//      —— 量子 AI 管线的四层时间常数：态制备 / 门执行 / 测量读出 / 跨块通信，
+//         上层由下层加上本层组织开销构成。
+//   ② 代际法则   τ_{n+1} = τ_n / α
+//      —— α 领域相关（移动 1.3 / 自驾 1.5 / AI ≤ 10）：每一代把时间预算
+//         压缩 α 倍，「犹豫」随预算收缩而收敛成「果断」。
+//
+// 落地到 Chimera 的三个语义：
+//   · 情绪时间预算：混沌意识核的「犹豫」= 决策时间预算 τ；代际缩放压缩 τ
+//     等价于反思学习分化情绪阈值（阈值小 = 果断）。
+//   · 折叠调度（LogicFolding 量子化）：把串行深度折进并行 tier，关键路径
+//     近似除以层数；齿轮比 g = 跨层边 / 层内边（阈值 3）判定是否划算。
+//   · 时间影子价格 λ：路由 / 反思的判决按净价值 v − λ·c 门控（时间即货币）。
+//
+// 兼容性说明：本文件是新增集群，不修改任何既有组件签名；Jarvis 依赖的
+// chimera_morphs / perception / consciousness / decision / dream / metacognition
+// 均不受影响，旧模型不改一行即可继续编译运行。
+
+// ─── ① 分层复合：四层时间常数的截止期 ────────────────────────────────────
+// 分量之和即"这次任务要用多久"；调用方可自行加权体现本层组织开销。
+@layer(time=0, thread=0, coord=(1400))
+export double tau_deadline(double t_state, double t_gate, double t_measure, double t_comm) {
+    return t_state + t_gate + t_measure + t_comm;
+}
+
+// ─── ② 代际法则：领域α + 一代缩放 ────────────────────────────────────────
+@layer(time=0, thread=0, coord=(1401))
+export double tau_domain_alpha(double domain) {
+    return tau_alpha(domain);
+}
+
+@layer(time=0, thread=0, coord=(1402))
+export double tau_generational_step(double tau_now, double domain) {
+    return tau_generational(tau_now, tau_domain_alpha(domain));
+}
+
+// 多代退火：预算按 α^gens 收缩（每次除法等价于乘 α 的连乘逆）。返回末代预算。
+@layer(time=0, thread=0, coord=(1403))
+export double tau_anneal_budget(double budget, double domain, int32 gens) {
+    double b = budget;
+    int32 g = 0;
+    while (g < gens) {
+        b = tau_generational(b, tau_domain_alpha(domain));
+        g = g + 1;
+    }
+    return b;
+}
+
+// ─── ③ 折叠调度（LogicFolding 量子化）────────────────────────────────────
+// depth 串行深度折进 tiers 个并行层；跨层/层内边数决定齿轮比；返回总调度
+// 代价 τ_gate·D + τ_comm·D·g。g > 3（论文阈值）时跨层通信主导，结果偏大，
+// 调用方用返回值比较不同层数的方案。
+@layer(time=0, thread=0, coord=(1404))
+export double tau_fold_plan(double depth, double tiers, double cross_edges,
+                            double intra_edges, double t_gate, double t_comm) {
+    double folded = tau_fold_depth(depth, tiers);
+    double gear   = tau_gear_ratio(cross_edges, intra_edges);
+    return tau_route_cost(folded, gear, t_gate, t_comm);
+}
+
+// ─── ④ 时间影子价格门控 ──────────────────────────────────────────────────
+// 净价值 v − λ·c：>0 才值得在当前时间价格下调度（路由 / 反思判决）。
+@layer(time=0, thread=0, coord=(1405))
+export double tau_price_gate(double value, double cost, double shadow_price) {
+    return tau_route_price(value, cost, shadow_price);
+}

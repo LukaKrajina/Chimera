@@ -1,0 +1,51 @@
+// chimera_qim.rvdl —— ③ 内生动机（Quantum Intrinsic Motivation）
+//
+// 纯新增模块，不修改任何现有 .rvdl。理论见 docs/quantum-cognition-theory.md §5。
+// C++ 权威实现：Ravendrel/runtime/include/qai/IntrinsicMotivation.hpp
+// 补齐现有实现的缺口：调研确认 chimera 全库没有任何函数把内生动机写回 reward。
+
+// r_int = βΔS_L + γΔχ − λ_τ c_τ − ζ σ̂²_aleatoric
+@layer(time=0, thread=0, coord=(1420))
+export double qim_reward(double delta_entropy, double delta_holevo,
+                  double tau_cost, double aleatoric_variance) {
+    return delta_entropy + delta_holevo - 0.1 * tau_cost - 0.7 * aleatoric_variance;
+}
+
+// noisy-TV 防护：只保留超过 aleatoric 估计的可减少不确定性
+@layer(time=0, thread=0, coord=(1421))
+export double qim_noisy_tv_guard(double prediction_error, double aleatoric_variance, double zeta) {
+    double v = prediction_error - zeta * aleatoric_variance;
+    if (v < 0.0) { v = 0.0; }
+    return v;
+}
+
+// 把内在奖励写回外部奖励（carla 的 0.15 / 碰撞 −1.0 等标量）
+@layer(time=0, thread=0, coord=(1422))
+export double qim_write_back(double extrinsic, double intrinsic) {
+    return extrinsic + intrinsic;
+}
+
+// Holevo 信息的二次近似 χ ≈ 1 − Tr(ρ̄²)
+@layer(time=0, thread=0, coord=(1423))
+export double qim_holevo_proxy(double ensemble_purity) {
+    double v = 1.0 - ensemble_purity;
+    if (v < 0.0) { v = 0.0; }
+    return v;
+}
+
+// 期望自由能代理（定理 4）：−log F 的多项式形式 − χ + 代价
+@layer(time=0, thread=0, coord=(1424))
+export double qim_expected_free_energy(double pred_fidelity, double delta_holevo,
+                                double tau_cost, double aleatoric_variance) {
+    double f = pred_fidelity;
+    if (f < 0.000001) { f = 0.000001; }
+    return (1.0 - f) / f - delta_holevo + 0.1 * tau_cost + 0.7 * aleatoric_variance;
+}
+
+// 赋能上界 log d_A 的 Padé 近似（避免内置 log）
+@layer(time=0, thread=0, coord=(1425))
+export double qim_empowerment_bound(double action_space) {
+    if (action_space <= 1.0) { return 0.0; }
+    double x = action_space - 1.0;
+    return 2.0 * x / (2.0 + x);
+}

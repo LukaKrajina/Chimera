@@ -1,0 +1,36 @@
+{
+  "chimera": {
+    "chimera_entropy": 1307,
+    "chimera_setpoint_iters": 30,
+    "chimera_setpoint_err": 154,
+    "chimera_error_detect_acc": 1000
+  },
+  "transformer": {
+    "transformer_entropy": 1378,
+    "transformer_setpoint_iters": 30,
+    "transformer_setpoint_err": 257,
+    "transformer_error_detect_acc": 500
+  },
+  "table": [
+    {
+      "metric": "内部状态熵(S/nats)",
+      "chimera": 1.307,
+      "transformer": 1.378
+    },
+    {
+      "metric": "设定点迭代步数",
+      "chimera": 30,
+      "transformer": 30
+    },
+    {
+      "metric": "设定点残差误差",
+      "chimera": 0.154,
+      "transformer": 0.257
+    },
+    {
+      "metric": "误差识别准确率",
+      "chimera": 1.0,
+      "transformer": 0.5
+    }
+  ]
+}
